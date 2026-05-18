@@ -27,3 +27,9 @@ logs/
 
 # uploads
 uploads/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+app/static/*
+!app/static/.gitkeep

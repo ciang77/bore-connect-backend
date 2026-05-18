@@ -1,34 +1,112 @@
 import os
-import requests
 import json
+from pathlib import Path
+
+import jieba
+import requests
 from dotenv import load_dotenv
-from fastapi import APIRouter, FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
-API_KEY = os.getenv("QWEN_API_KEY")
 
-API_URL = os.getenv(
-    "QWEN_API_URL",
-    "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
-)
-MODEL_NAME = os.getenv("QWEN_MODEL", "qwen3.6-35b-a3b")
+# ── knowledge base ──
+_kb_path = Path(__file__).parent.parent / "knowledge" / "faults.json"
+_kb_entries: list[dict] = []
+
+_jieba_loaded = False
+
+def _load_kb():
+    global _kb_entries, _jieba_loaded
+    if not _jieba_loaded:
+        jieba.initialize()
+        for w in ["空开", "跳闸", "静压", "编码器", "变位机", "排屑器", "铣头",
+                   "龙门架", "回零", "手轮", "扫码枪", "内冷", "外冷", "航车",
+                   "限位", "光栅尺", "变频器", "离合器", "护罩", "冷却液"]:
+            jieba.add_word(w)
+        _jieba_loaded = True
+
+    if _kb_entries:
+        return
+    with open(_kb_path, encoding="utf-8") as f:
+        data = json.load(f)
+    for category, statuses in data.items():
+        for status, faults in statuses.items():
+            for item in faults:
+                fault = item["fault"].strip().rstrip("，,")
+                cause = item["cause"].strip()
+                text = fault.lower()
+                tokens = {t for t in jieba.lcut(text) if len(t.strip()) > 1}
+                _kb_entries.append({
+                    "category": category,
+                    "status": status,
+                    "fault": fault,
+                    "cause": cause,
+                    "tokens": tokens,
+                })
+
+_load_kb()
+
+MATCH_THRESHOLD = 0.25
+
+def match_kb(question: str) -> dict | None:
+    query_text = question.lower()
+    query_tokens = {t for t in jieba.lcut(query_text) if len(t.strip()) > 1}
+    if not query_tokens:
+        return None
+
+    best = None
+    best_score = 0.0
+    for entry in _kb_entries:
+        overlap = len(query_tokens & entry["tokens"])
+        score = overlap / len(query_tokens)
+        if score > best_score:
+            best_score = score
+            best = entry
+
+    if best and best_score >= MATCH_THRESHOLD:
+        return {"entry": best, "score": best_score}
+    return None
+
+
+# ── model configs ──
+
+MODEL_CONFIGS = {
+    "qwen": {
+        "api_key": os.getenv("QWEN_API_KEY"),
+        "api_url": os.getenv(
+            "QWEN_API_URL",
+            "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+        ),
+        "model": os.getenv("QWEN_MODEL", "qwen3.6-35b-a3b"),
+    },
+    "deepseek": {
+        "api_key": os.getenv("DEEPSEEK_API_KEY"),
+        "api_url": os.getenv(
+            "DEEPSEEK_API_URL",
+            "https://api.deepseek.com/v1/chat/completions",
+        ),
+        "model": os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash"),
+    },
+}
+
+DEFAULT_MODEL = "qwen"
 
 _session = requests.Session()
 _session.trust_env = False
 
 class QARequest(BaseModel):
     question: str
-    max_tokens: int = 500
+    model: str = DEFAULT_MODEL
+    max_tokens: int = 2048
     temperature: float = 0.2
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
 @router.get("/ping")
 def ping():
-    return {"ok": True, "model": MODEL_NAME}
+    return {"ok": True, "models": list(MODEL_CONFIGS.keys()), "default": DEFAULT_MODEL}
 
 def _openai_compatible_stream_iter(resp: requests.Response):
     for raw_line in resp.iter_lines(decode_unicode=True):
@@ -50,13 +128,38 @@ def qa_stream(req: QARequest):
     if not req.question.strip():
         raise HTTPException(status_code=400, detail="question is required")
 
+    # ── 优先匹配知识库 ──
+    kb_match = match_kb(req.question)
+    if kb_match:
+        e = kb_match["entry"]
+        lines = [
+            f"【{e['category']} · {e['status']}】",
+            f"故障：{e['fault']}",
+            f"原因：{e['cause']}",
+        ]
+
+        def kb_stream():
+            for line in lines:
+                yield json.dumps({"delta": line + "\n"}, ensure_ascii=False) + "\n"
+            yield json.dumps({"done": True}, ensure_ascii=False) + "\n"
+
+        return StreamingResponse(kb_stream(), media_type="application/x-ndjson")
+
+    # ── 知识库未命中，走大模型 ──
+    config = MODEL_CONFIGS.get(req.model)
+    if not config:
+        raise HTTPException(status_code=400, detail=f"unknown model: {req.model}")
+
+    if not config["api_key"]:
+        raise HTTPException(status_code=500, detail=f"API key not configured for {req.model}")
+
     headers = {
-        "Authorization": f"Bearer {API_KEY}",
+        "Authorization": f"Bearer {config['api_key']}",
         "Content-Type": "application/json",
     }
 
     payload = {
-        "model": MODEL_NAME,
+        "model": config["model"],
         "messages": [{"role": "user", "content": req.question}],
         "max_tokens": req.max_tokens,
         "temperature": req.temperature,
@@ -65,7 +168,7 @@ def qa_stream(req: QARequest):
 
     try:
         resp = _session.post(
-            API_URL,
+            config["api_url"],
             headers=headers,
             json=payload,
             timeout=(5, 30),
@@ -84,121 +187,15 @@ def qa_stream(req: QARequest):
                 delta = choice0.get("delta") or {}
                 content = delta.get("content")
                 if content:
-                    yield f"data: {json.dumps({'delta': content}, ensure_ascii=False)}\n\n"
-            yield f"data: {json.dumps({'done': True}, ensure_ascii=False)}\n\n"
+                    yield json.dumps({"delta": content}, ensure_ascii=False) + "\n"
+            yield json.dumps({"done": True}, ensure_ascii=False) + "\n"
         finally:
             resp.close()
 
     return StreamingResponse(
         event_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
+        media_type="application/x-ndjson",
     )
 
 
-@router.get("/sse")
-def sse(question: str, max_tokens: int = 500, temperature: float = 0.2):
-    req = QARequest(question=question, max_tokens=max_tokens, temperature=temperature)
-    return qa_stream(req)
 
-
-@router.get("/ui", response_class=HTMLResponse)
-def ui():
-    html = """
-<!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Qwen SSE 测试</title>
-    <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "PingFang SC", "Microsoft YaHei", sans-serif; margin: 24px; }
-      .row { display: flex; gap: 8px; }
-      input { flex: 1; padding: 10px 12px; font-size: 14px; }
-      button { padding: 10px 14px; font-size: 14px; cursor: pointer; }
-      #out { white-space: pre-wrap; border: 1px solid #ddd; padding: 12px; margin-top: 12px; min-height: 180px; }
-      .muted { color: #666; font-size: 12px; margin-top: 10px; }
-    </style>
-  </head>
-  <body>
-    <h3>Qwen SSE 流式输出测试</h3>
-    <div class="row">
-      <input id="q" placeholder="输入问题，例如：用三句话解释什么是 SSE" />
-      <button id="btn">发送</button>
-      <button id="stop">停止</button>
-    </div>
-    <div id="out"></div>
-    <div class="muted" id="status"></div>
-    <script>
-      const q = document.getElementById("q");
-      const out = document.getElementById("out");
-      const status = document.getElementById("status");
-      const btn = document.getElementById("btn");
-      const stop = document.getElementById("stop");
-      let es = null;
-
-      function closeES() {
-        if (es) {
-          es.close();
-          es = null;
-        }
-      }
-
-      function setStatus(s) {
-        status.textContent = s;
-      }
-
-      btn.addEventListener("click", () => {
-        const text = (q.value || "").trim();
-        if (!text) return;
-        closeES();
-        out.textContent = "";
-        setStatus("连接中...");
-        const url = "/chat/sse?question=" + encodeURIComponent(text) + "&temperature=0.2&max_tokens=500";
-        es = new EventSource(url);
-        es.onopen = () => setStatus("已连接，等待流式输出...");
-        es.onmessage = (ev) => {
-          try {
-            const data = JSON.parse(ev.data);
-            if (data.done) {
-              setStatus("已完成");
-              closeES();
-              return;
-            }
-            if (data.delta) out.textContent += data.delta;
-          } catch (e) {
-            out.textContent += ev.data;
-          }
-        };
-        es.onerror = () => {
-          setStatus("连接异常或中断");
-          closeES();
-        };
-      });
-
-      stop.addEventListener("click", () => {
-        setStatus("已停止");
-        closeES();
-      });
-    </script>
-  </body>
-</html>
-"""
-    return HTMLResponse(content=html)
-
-
-app = FastAPI(title="Qwen 企业问答服务")
-
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5173"],  # 你的前端地址
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-app.include_router(router)

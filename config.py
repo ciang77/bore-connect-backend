@@ -7,7 +7,8 @@ load_dotenv()
 class Settings:
     # API Keys
     qwen_api_key: str = os.getenv("QWEN_API_KEY")
-    glm4_api_key: str = os.getenv("GLM4_API_KEY")
+    deepseek_api_key: str = os.getenv("DEEPSEEK_API_KEY")
+
     
     # 调用参数
     api_timeout: int = int(os.getenv("API_TIMEOUT", 20))   # 默认 20s

@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtual env
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+
+# Environment
+.env
+
+# Logs
+logs/
+*.log
+
+# AI model
+*.pt
+*.pth
+*.onnx
+
+# cache
+.cache/
+
+# uploads
+uploads/

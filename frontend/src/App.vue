@@ -1,469 +1,334 @@
 <script setup lang="ts">
-import { ref, nextTick, onUnmounted } from 'vue'
+import ChatBot from './components/ChatBot.vue'
+import FaultPie from './components/FaultPie.vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 
-const open = ref(false)
-const model = ref('qwen')
-const input = ref('')
-const sending = ref(false)
-const status = ref('')
-const messages = ref<{ role: 'user' | 'assistant'; content: string }[]>([])
+const now = ref(new Date())
+let timer: ReturnType<typeof setInterval> | undefined
 
-let controller: AbortController | null = null
+const weekdays = ['日', '一', '二', '三', '四', '五', '六']
 
-const widgetPos = ref({ x: 0, y: 0 })
-const isDragging = ref(false)
-const dragStart = ref({ x: 0, y: 0 })
-const dragOffset = ref({ x: 0, y: 0 })
-
-const models = [
-  { value: 'qwen', label: '千问 (Qwen)' },
-  { value: 'deepseek', label: 'DeepSeek' },
-]
-
-// ── drag logic ──
-function onDragStart(e: MouseEvent | TouchEvent) {
-  isDragging.value = true
-  const p = 'touches' in e ? e.touches[0] : e
-  dragStart.value = { x: p.clientX, y: p.clientY }
-  dragOffset.value = { x: widgetPos.value.x, y: widgetPos.value.y }
-  document.addEventListener('mousemove', onDragMove)
-  document.addEventListener('mouseup', onDragEnd)
-  document.addEventListener('touchmove', onDragMove, { passive: false })
-  document.addEventListener('touchend', onDragEnd)
+function pad(n: number): string {
+  return n < 10 ? '0' + n : '' + n
 }
 
-function onDragMove(e: MouseEvent | TouchEvent) {
-  if (!isDragging.value) return
-  e.preventDefault()
-  const p = 'touches' in e ? e.touches[0] : e
-  widgetPos.value = {
-    x: dragOffset.value.x + p.clientX - dragStart.value.x,
-    y: dragOffset.value.y + p.clientY - dragStart.value.y,
-  }
+function formatDate(d: Date): string {
+  return `${d.getFullYear()}年${pad(d.getMonth() + 1)}月${pad(d.getDate())}日`
 }
 
-function onDragEnd() {
-  isDragging.value = false
-  document.removeEventListener('mousemove', onDragMove)
-  document.removeEventListener('mouseup', onDragEnd)
-  document.removeEventListener('touchmove', onDragMove)
-  document.removeEventListener('touchend', onDragEnd)
+function formatTime(d: Date): string {
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
-// ── init position ──
-function initPosition() {
-  widgetPos.value = { x: -20, y: -20 }
-}
-initPosition()
-
-// ── chat logic ──
-function abort() {
-  if (controller) {
-    controller.abort()
-    controller = null
-  }
+function weekday(d: Date): string {
+  return '星期' + weekdays[d.getDay()]
 }
 
-async function send() {
-  const text = input.value.trim()
-  if (!text || sending.value) return
-
-  abort()
-  input.value = ''
-  status.value = ''
-  sending.value = true
-
-  messages.value.push({ role: 'user', content: text })
-  const aiIdx = messages.value.length
-  messages.value.push({ role: 'assistant', content: '' })
-
-  await nextTick()
-  scrollBottom()
-
-  controller = new AbortController()
-
-  try {
-    const resp = await fetch('/chat/qa/stream', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        question: text,
-        model: model.value,
-        temperature: 0.2,
-        max_tokens: 2048,
-      }),
-      signal: controller.signal,
-    })
-
-    if (!resp.ok) {
-      status.value = `请求失败 (${resp.status})`
-      messages.value.pop()
-      messages.value.pop()
-      sending.value = false
-      return
-    }
-
-    const reader = resp.body!.getReader()
-    const decoder = new TextDecoder()
-    let buf = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      buf += decoder.decode(value, { stream: true })
-      const lines = buf.split('\n')
-      buf = lines.pop()!
-
-      for (const line of lines) {
-        if (!line) continue
-        try {
-          const data = JSON.parse(line)
-          if (data.done) return
-          if (data.delta) messages.value[aiIdx].content += data.delta
-        } catch { /* skip */ }
-      }
-    }
-
-    if (buf) {
-      try {
-        const data = JSON.parse(buf)
-        if (!data.done && data.delta) messages.value[aiIdx].content += data.delta
-      } catch { /* skip */ }
-    }
-  } catch (err: any) {
-    if (err.name === 'AbortError') return
-    status.value = '连接异常或中断'
-  } finally {
-    controller = null
-    sending.value = false
-  }
-}
-
-function stop() {
-  status.value = '已停止'
-  abort()
-  sending.value = false
-}
-
-function scrollBottom() {
-  nextTick(() => {
-    const el = document.getElementById('msg-area')
-    if (el) el.scrollTop = el.scrollHeight
-  })
-}
-
-function toggleOpen() {
-  open.value = !open.value
-  if (open.value) scrollBottom()
-}
-
-// esc to close
-function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && open.value) open.value = false
-}
-window.addEventListener('keydown', onKeydown)
-
-onUnmounted(() => {
-  abort()
-  window.removeEventListener('keydown', onKeydown)
-  document.removeEventListener('mousemove', onDragMove)
-  document.removeEventListener('mouseup', onDragEnd)
+onMounted(() => {
+  timer = setInterval(() => { now.value = new Date() }, 1000)
 })
+onUnmounted(() => { clearInterval(timer) })
 </script>
 
 <template>
-  <div
-    class="widget-root"
-    :style="{ transform: `translate(${widgetPos.x}px, ${widgetPos.y}px)` }"
-  >
-    <!-- Chat Window -->
-    <Transition name="pop">
-      <div v-if="open" class="chat-window">
-        <!-- Header (drag handle) -->
-        <div class="chat-header" @mousedown="onDragStart" @touchstart.prevent="onDragStart">
-          <span class="chat-title">AI 助手</span>
-          <div class="header-actions">
-            <select
-              v-model="model"
-              class="model-select"
-              @mousedown.stop
-              @touchstart.stop
-            >
-              <option v-for="m in models" :key="m.value" :value="m.value">
-                {{ m.label }}
-              </option>
-            </select>
-            <button class="btn-close" @click="open = false" title="关闭 (Esc)">&times;</button>
+  <div class="page">
+    <!-- 背景装饰 -->
+    <div class="bg-grid"></div>
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+
+    <!-- 顶部标题栏 -->
+    <header class="top-bar">
+      <!-- 左右装饰角 -->
+      <div class="corner corner-tl"></div>
+      <div class="corner corner-tr"></div>
+      <div class="top-bar-inner">
+        <!-- 左侧：Logo + 状态 -->
+        <div class="top-bar-left">
+          <div class="logo">
+            <svg viewBox="0 0 32 32" fill="none" class="logo-icon">
+              <rect x="2" y="8" width="28" height="16" rx="4" stroke="currentColor" stroke-width="2"/>
+              <circle cx="10" cy="16" r="3" fill="currentColor" opacity="0.6"/>
+              <circle cx="22" cy="16" r="3" fill="currentColor" opacity="0.6"/>
+              <line x1="16" y1="4" x2="16" y2="8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <circle cx="16" cy="3" r="2" fill="currentColor"/>
+            </svg>
+            <span class="status-dot"></span>
+            <span class="status-text">系统运行中</span>
           </div>
         </div>
 
-        <!-- Messages -->
-        <div id="msg-area" class="msg-area">
-          <div v-if="messages.length === 0" class="empty-hint">
-            👋 有什么可以帮你的？
-          </div>
-          <div
-            v-for="(msg, i) in messages"
-            :key="i"
-            :class="['msg', msg.role]"
-          >
-            <div class="msg-content">{{ msg.content }}</div>
-          </div>
-          <div v-if="status" class="status-line">{{ status }}</div>
+        <!-- 中间：标题 -->
+        <div class="top-bar-center">
+          <div class="title-deco title-deco-left"></div>
+          <h1 class="main-title">龙门镗铣床智能管理平台</h1>
+          <div class="title-deco title-deco-right"></div>
         </div>
 
-        <!-- Input -->
-        <div class="input-area">
-          <input
-            v-model="input"
-            placeholder="输入问题，Enter 发送..."
-            @keyup.enter="send"
-            :disabled="sending"
-          />
-          <button class="btn-send" :disabled="sending" @click="send">发送</button>
-          <button v-if="sending" class="btn-stop" @click="stop">停</button>
+        <!-- 右侧：日期时间 -->
+        <div class="top-bar-right">
+          <div class="datetime-block">
+            <span class="date-text">{{ formatDate(now) }}</span>
+            <span class="divider">|</span>
+            <span class="weekday-text">{{ weekday(now) }}</span>
+            <span class="divider">|</span>
+            <span class="time-text">{{ formatTime(now) }}</span>
+          </div>
         </div>
       </div>
-    </Transition>
+      <!-- 底部扫描线 -->
+      <div class="scan-line"></div>
+    </header>
 
-    <!-- Floating button -->
-    <button
-      v-show="!open"
-      class="float-btn"
-      @mousedown.stop="onDragStart"
-      @touchstart.stop.prevent="onDragStart"
-      @click.stop="toggleOpen"
-    >
-      <span class="robot-icon">🤖</span>
-    </button>
+    <!-- 图表区域 -->
+    <section class="charts-section">
+      <FaultPie />
+    </section>
+
+    <!-- 智能助手浮窗 -->
+    <ChatBot />
   </div>
 </template>
 
 <style>
-/* ── reset for embeddable widget ── */
-body {
+/* ── 全局重置 ── */
+* {
   margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+body {
   min-height: 100vh;
-  background: #f0f2f5;
+  font-family: "Microsoft YaHei", "微软雅黑", sans-serif;
+  color: #e0e6f0;
+  overflow-x: hidden;
 }
 </style>
 
 <style scoped>
-/* ── root ── */
-.widget-root {
+/* ── 页面背景 ── */
+.page {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0a0e27 0%, #1a1040 40%, #0d1b3e 100%);
+  position: relative;
+}
+
+/* 网格背景 */
+.bg-grid {
   position: fixed;
-  bottom: 0;
-  right: 0;
-  z-index: 99999;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial,
-    "PingFang SC", "Microsoft YaHei", sans-serif;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(100, 126, 234, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(100, 126, 234, 0.06) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none;
 }
 
-/* ── float button ── */
-.float-btn {
-  width: 60px;
-  height: 60px;
+/* 光晕装饰 */
+.bg-glow {
+  position: fixed;
   border-radius: 50%;
-  border: none;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.45);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: transform 0.2s, box-shadow 0.2s;
-  user-select: none;
-  position: absolute;
-  bottom: 0;
-  right: 0;
+  filter: blur(100px);
+  pointer-events: none;
+  opacity: 0.3;
 }
-.float-btn:hover {
-  transform: scale(1.08);
-  box-shadow: 0 6px 24px rgba(102, 126, 234, 0.55);
+.bg-glow-1 {
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, #667eea 0%, transparent 70%);
+  top: -200px;
+  right: -100px;
 }
-.robot-icon {
-  font-size: 30px;
-  line-height: 1;
+.bg-glow-2 {
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, #764ba2 0%, transparent 70%);
+  bottom: -200px;
+  left: -100px;
 }
 
-/* ── chat window ── */
-.chat-window {
-  position: absolute;
-  bottom: 8px;
-  right: 8px;
-  width: 400px;
-  height: 560px;
-  background: #fff;
-  border-radius: 16px;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.18);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+/* ── 顶部标题栏 ── */
+.top-bar {
+  position: sticky;
+  top: 28px;
+  z-index: 100;
+  background: linear-gradient(180deg, rgba(10, 14, 39, 0.95) 0%, rgba(10, 14, 39, 0.85) 100%);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(0, 180, 255, 0.15);
+  padding: 20px 24px 10px;
 }
 
-/* ── header ── */
-.chat-header {
+/* 装饰角 */
+.corner {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+.corner-tl {
+  top: 8px; left: 8px;
+  border-top: 2px solid rgba(0, 180, 255, 0.4);
+  border-left: 2px solid rgba(0, 180, 255, 0.4);
+}
+.corner-tr {
+  top: 8px; right: 8px;
+  border-top: 2px solid rgba(0, 180, 255, 0.4);
+  border-right: 2px solid rgba(0, 180, 255, 0.4);
+}
+
+.top-bar-inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  height: 72px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: #fff;
-  cursor: grab;
-  user-select: none;
-  flex-shrink: 0;
+  position: relative;
 }
-.chat-header:active {
-  cursor: grabbing;
-}
-.chat-title {
-  font-weight: 600;
-  font-size: 15px;
-}
-.header-actions {
+
+/* 左侧 */
+.top-bar-left {
+  flex: 1;
   display: flex;
   align-items: center;
-  gap: 8px;
 }
-.model-select {
-  padding: 4px 8px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  background: rgba(255, 255, 255, 0.15);
-  color: #fff;
-  font-size: 12px;
-  cursor: pointer;
-  outline: none;
-}
-.model-select option {
-  color: #333;
-}
-.btn-close {
-  background: none;
-  border: none;
-  color: #fff;
-  font-size: 22px;
-  cursor: pointer;
-  padding: 0 4px;
-  line-height: 1;
-  opacity: 0.8;
-}
-.btn-close:hover {
-  opacity: 1;
-}
-
-/* ── messages ── */
-.msg-area {
-  flex: 1;
-  overflow-y: auto;
-  padding: 12px 16px;
+.logo {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 10px;
-  background: #f8f9fb;
 }
-.empty-hint {
-  text-align: center;
-  color: #aaa;
-  margin-top: 60px;
-  font-size: 15px;
+.logo-icon {
+  width: 32px;
+  height: 32px;
+  color: #00b4ff;
+  filter: drop-shadow(0 0 6px rgba(0, 180, 255, 0.5));
 }
-.msg {
-  max-width: 85%;
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #00e676;
+  box-shadow: 0 0 8px rgba(0, 230, 118, 0.6);
+  animation: pulse-dot 2s ease-in-out infinite;
 }
-.msg.user {
-  align-self: flex-end;
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
-.msg.user .msg-content {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+.status-text {
+  font-size: 20px;
+  color: rgba(0, 180, 255, 0.7);
+  letter-spacing: 1px;
+}
+
+/* 中间标题 */
+.top-bar-center {
+  flex: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+.main-title {
+  font-family: "Microsoft YaHei", "微软雅黑", sans-serif;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 8px;
   color: #fff;
-  border-radius: 14px 14px 4px 14px;
+  text-shadow:
+    0 0 20px rgba(0, 180, 255, 0.5),
+    0 0 40px rgba(0, 180, 255, 0.2);
+  white-space: nowrap;
+  background: linear-gradient(180deg, #ffffff 30%, #00b4ff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  position: relative;
 }
-.msg.assistant {
-  align-self: flex-start;
+.title-deco {
+  width: 80px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(0, 180, 255, 0.6), transparent);
+  position: relative;
+  flex-shrink: 0;
 }
-.msg.assistant .msg-content {
-  background: #fff;
-  border: 1px solid #e8e8ec;
-  border-radius: 14px 14px 14px 4px;
+.title-deco::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 8px;
+  height: 8px;
+  background: #00b4ff;
+  box-shadow: 0 0 8px rgba(0, 180, 255, 0.8);
 }
-.msg-content {
-  padding: 10px 14px;
-  font-size: 14px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-word;
+.title-deco-left::before { right: 0; }
+.title-deco-right::before { left: 0; }
+
+/* 右侧时间 */
+.top-bar-right {
+  flex: 1.2;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
 }
-.status-line {
-  text-align: center;
-  color: #999;
+.datetime-block {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: "Microsoft YaHei", "微软雅黑", sans-serif;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.date-text {
+  font-size: 20px;
+  color: rgba(200, 215, 240, 0.6);
+  letter-spacing: 1px;
+}
+.divider {
+  color: rgba(0, 180, 255, 0.25);
   font-size: 12px;
 }
-
-/* ── input area ── */
-.input-area {
-  display: flex;
-  gap: 6px;
-  padding: 10px 12px;
-  border-top: 1px solid #eee;
-  flex-shrink: 0;
-  background: #fff;
+.weekday-text {
+  font-size: 20px;
+  color: rgba(0, 180, 255, 0.6);
 }
-.input-area input {
-  flex: 1;
-  padding: 10px 12px;
-  font-size: 14px;
-  border: 1px solid #e0e0e4;
-  border-radius: 10px;
-  outline: none;
-  transition: border-color 0.2s;
-}
-.input-area input:focus {
-  border-color: #667eea;
-}
-.btn-send,
-.btn-stop {
-  padding: 10px 16px;
-  font-size: 13px;
-  border-radius: 10px;
-  border: none;
-  cursor: pointer;
-  font-weight: 500;
-  white-space: nowrap;
-}
-.btn-send {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: #fff;
-}
-.btn-send:hover {
-  opacity: 0.9;
-}
-.btn-send:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.btn-stop {
-  background: #eee;
-  color: #666;
-}
-.btn-stop:hover {
-  background: #ddd;
+.time-text {
+  font-size: 20px;
+  font-weight: 700;
+  color: #00e5ff;
+  letter-spacing: 2px;
+  font-family: "Courier New", "Microsoft YaHei", monospace;
+  text-shadow: 0 0 10px rgba(0, 229, 255, 0.35);
 }
 
-/* ── transitions ── */
-.pop-enter-active {
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+/* 底部扫描线 */
+.scan-line {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(0, 180, 255, 0.1) 20%,
+    rgba(0, 180, 255, 0.5) 50%,
+    rgba(0, 180, 255, 0.1) 80%,
+    transparent 100%
+  );
+  animation: scan-sweep 4s ease-in-out infinite;
 }
-.pop-leave-active {
-  transition: all 0.2s ease-in;
+@keyframes scan-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
 }
-.pop-enter-from {
-  opacity: 0;
-  transform: scale(0.7) translateY(20px);
+
+/* ── 图表区域 ── */
+.charts-section {
+  max-width: 600px;
+  margin: 36px 16px 0 auto;
+  padding: 0 24px;
 }
-.pop-leave-to {
-  opacity: 0;
-  transform: scale(0.8) translateY(10px);
-}
+
+
 </style>

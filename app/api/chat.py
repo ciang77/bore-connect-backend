@@ -1,15 +1,16 @@
-import os
 import json
+import logging
 from pathlib import Path
 
 import jieba
 import requests
-from dotenv import load_dotenv
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-load_dotenv()
+from app.config.settings import settings
+
+logger = logging.getLogger(__name__)
 
 # ── knowledge base ──
 _kb_path = Path(__file__).parent.parent / "knowledge" / "faults.json"
@@ -29,84 +30,90 @@ def _load_kb():
 
     if _kb_entries:
         return
-    with open(_kb_path, encoding="utf-8") as f:
-        data = json.load(f)
-    for category, statuses in data.items():
-        for status, faults in statuses.items():
-            for item in faults:
-                fault = item["fault"].strip().rstrip("，,")
-                cause = item["cause"].strip()
-                text = fault.lower()
-                tokens = {t for t in jieba.lcut(text) if len(t.strip()) > 1}
-                _kb_entries.append({
-                    "category": category,
-                    "status": status,
-                    "fault": fault,
-                    "cause": cause,
-                    "tokens": tokens,
-                })
+
+    if not _kb_path.exists():
+        logger.warning("知识库文件不存在: %s", _kb_path)
+        return
+
+    try:
+        with open(_kb_path, encoding="utf-8") as f:
+            data = json.load(f)
+        for category, statuses in data.items():
+            for status, faults in statuses.items():
+                for item in faults:
+                    fault = item.get("fault", "").strip().rstrip("，,")
+                    cause = item.get("cause", "").strip()
+                    if not fault:
+                        continue
+                    text = fault.lower()
+                    tokens = {t for t in jieba.lcut(text) if len(t.strip()) > 1}
+                    _kb_entries.append({
+                        "category": category,
+                        "status": status,
+                        "fault": fault,
+                        "cause": cause,
+                        "tokens": tokens,
+                    })
+        logger.info("知识库加载完成: %d 条记录", len(_kb_entries))
+    except (json.JSONDecodeError, KeyError, TypeError) as e:
+        logger.error("知识库加载失败: %s", e)
+        _kb_entries = []
 
 _load_kb()
 
 MATCH_THRESHOLD = 0.25
+MATCH_TOP_K = 3
 
-def match_kb(question: str) -> dict | None:
+def match_kb(question: str, top_k: int = MATCH_TOP_K) -> list[dict]:
     query_text = question.lower()
     query_tokens = {t for t in jieba.lcut(query_text) if len(t.strip()) > 1}
     if not query_tokens:
-        return None
+        return []
 
-    best = None
-    best_score = 0.0
+    scored = []
     for entry in _kb_entries:
         overlap = len(query_tokens & entry["tokens"])
         score = overlap / len(query_tokens)
-        if score > best_score:
-            best_score = score
-            best = entry
+        if score >= MATCH_THRESHOLD:
+            scored.append({"entry": entry, "score": score})
 
-    if best and best_score >= MATCH_THRESHOLD:
-        return {"entry": best, "score": best_score}
-    return None
+    scored.sort(key=lambda x: x["score"], reverse=True)
+    return scored[:top_k]
 
 
 # ── model configs ──
 
 MODEL_CONFIGS = {
     "qwen": {
-        "api_key": os.getenv("QWEN_API_KEY"),
-        "api_url": os.getenv(
-            "QWEN_API_URL",
-            "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
-        ),
-        "model": os.getenv("QWEN_MODEL", "qwen3.6-35b-a3b"),
+        "api_key": settings.QWEN_API_KEY,
+        "api_url": settings.QWEN_API_URL,
+        "model": settings.QWEN_MODEL,
     },
     "deepseek": {
-        "api_key": os.getenv("DEEPSEEK_API_KEY"),
-        "api_url": os.getenv(
-            "DEEPSEEK_API_URL",
-            "https://api.deepseek.com/v1/chat/completions",
-        ),
-        "model": os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash"),
+        "api_key": settings.DEEPSEEK_API_KEY,
+        "api_url": settings.DEEPSEEK_API_URL,
+        "model": settings.DEEPSEEK_MODEL,
     },
 }
 
 DEFAULT_MODEL = "qwen"
 
+SYSTEM_PROMPT = (
+    "你是龙门镗铣床设备的智能助手，可以回答设备操作、维护保养、故障诊断等各类问题。"
+    "请用简洁专业的语言回答，不要使用星号、井号等 Markdown 符号。"
+    "回答要有条理，分点说明。如果不确定，说明需要进一步排查的方向。"
+)
+
 _session = requests.Session()
 _session.trust_env = False
 
 class QARequest(BaseModel):
-    question: str
+    question: str = Field(..., min_length=1, max_length=2000)
     model: str = DEFAULT_MODEL
-    max_tokens: int = 2048
-    temperature: float = 0.2
+    max_tokens: int = Field(default=2048, ge=1, le=8192)
+    temperature: float = Field(default=0.2, ge=0.0, le=2.0)
 
-router = APIRouter(prefix="/chat", tags=["Chat"])
-
-@router.get("/ping")
-def ping():
-    return {"ok": True, "models": list(MODEL_CONFIGS.keys()), "default": DEFAULT_MODEL}
+router = APIRouter(prefix="/api/chat", tags=["Chat"])
 
 def _openai_compatible_stream_iter(resp: requests.Response):
     for raw_line in resp.iter_lines(decode_unicode=True):
@@ -123,79 +130,117 @@ def _openai_compatible_stream_iter(resp: requests.Response):
         except json.JSONDecodeError:
             continue
 
-@router.post("/qa/stream")
-def qa_stream(req: QARequest):
-    if not req.question.strip():
-        raise HTTPException(status_code=400, detail="question is required")
 
-    # ── 优先匹配知识库 ──
-    kb_match = match_kb(req.question)
-    if kb_match:
-        e = kb_match["entry"]
+def _call_llm(config: dict, messages: list[dict], max_tokens: int, temperature: float):
+    """调用大模型并返回 streaming Response，失败时抛出 RequestException。"""
+    headers = {
+        "Authorization": f"Bearer {config['api_key']}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": config["model"],
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "stream": True,
+    }
+    resp = _session.post(
+        config["api_url"],
+        headers=headers,
+        json=payload,
+        timeout=(5, 30),
+        stream=True,
+        proxies={"http": None, "https": None},
+        verify=True,
+    )
+    resp.raise_for_status()
+    return resp
+
+
+def _stream_llm(resp: requests.Response):
+    """将 LLM SSE 流转为 NDJSON 生成器。"""
+    try:
+        for data in _openai_compatible_stream_iter(resp):
+            choice0 = (data.get("choices") or [{}])[0]
+            delta = choice0.get("delta") or {}
+            content = delta.get("content")
+            if content:
+                yield json.dumps({"delta": content}, ensure_ascii=False) + "\n"
+        yield json.dumps({"done": True}, ensure_ascii=False) + "\n"
+    finally:
+        resp.close()
+
+
+def _raw_kb_stream(entries: list[dict]):
+    """降级方案：直接输出知识库原始数据。"""
+    for e in entries:
         lines = [
             f"【{e['category']} · {e['status']}】",
             f"故障：{e['fault']}",
             f"原因：{e['cause']}",
         ]
+        for line in lines:
+            yield json.dumps({"delta": line + "\n"}, ensure_ascii=False) + "\n"
+    yield json.dumps({"done": True}, ensure_ascii=False) + "\n"
 
-        def kb_stream():
-            for line in lines:
-                yield json.dumps({"delta": line + "\n"}, ensure_ascii=False) + "\n"
-            yield json.dumps({"done": True}, ensure_ascii=False) + "\n"
 
-        return StreamingResponse(kb_stream(), media_type="application/x-ndjson")
+@router.post("/completions")
+def chat_completions(req: QARequest):
+    if not req.question.strip():
+        raise HTTPException(status_code=400, detail="question is required")
 
-    # ── 知识库未命中，走大模型 ──
     config = MODEL_CONFIGS.get(req.model)
     if not config:
         raise HTTPException(status_code=400, detail=f"unknown model: {req.model}")
-
     if not config["api_key"]:
         raise HTTPException(status_code=500, detail=f"API key not configured for {req.model}")
 
-    headers = {
-        "Authorization": f"Bearer {config['api_key']}",
-        "Content-Type": "application/json",
-    }
+    # ── 匹配知识库 ──
+    kb_matches = match_kb(req.question)
 
-    payload = {
-        "model": config["model"],
-        "messages": [{"role": "user", "content": req.question}],
-        "max_tokens": req.max_tokens,
-        "temperature": req.temperature,
-        "stream": True,
-    }
+    if kb_matches:
+        # 把检索结果作为上下文，交给大模型组织语言
+        context_parts = []
+        for m in kb_matches:
+            e = m["entry"]
+            context_parts.append(
+                f"- 故障类型：{e['category']}，设备状态：{e['status']}\n"
+                f"  故障描述：{e['fault']}\n"
+                f"  原因分析：{e['cause']}"
+            )
+        kb_context = "以下是知识库中的相关记录：\n" + "\n".join(context_parts)
+
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": f"{kb_context}\n\n用户问题：{req.question}\n\n请根据以上知识库记录回答用户问题。"},
+        ]
+
+        try:
+            resp = _call_llm(config, messages, req.max_tokens, req.temperature)
+            return StreamingResponse(
+                _stream_llm(resp),
+                media_type="application/x-ndjson",
+            )
+        except requests.exceptions.RequestException:
+            # 大模型不可用时降级为原始知识库数据
+            entries = [m["entry"] for m in kb_matches]
+            return StreamingResponse(
+                _raw_kb_stream(entries),
+                media_type="application/x-ndjson",
+            )
+
+    # ── 知识库未命中，走大模型 ──
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": req.question},
+    ]
 
     try:
-        resp = _session.post(
-            config["api_url"],
-            headers=headers,
-            json=payload,
-            timeout=(5, 30),
-            stream=True,
-            proxies={"http": None, "https": None},
-            verify=True
-        )
-        resp.raise_for_status()
+        resp = _call_llm(config, messages, req.max_tokens, req.temperature)
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=502, detail=str(e))
 
-    def event_stream():
-        try:
-            for data in _openai_compatible_stream_iter(resp):
-                choice0 = (data.get("choices") or [{}])[0]
-                delta = choice0.get("delta") or {}
-                content = delta.get("content")
-                if content:
-                    yield json.dumps({"delta": content}, ensure_ascii=False) + "\n"
-            yield json.dumps({"done": True}, ensure_ascii=False) + "\n"
-        finally:
-            resp.close()
-
     return StreamingResponse(
-        event_stream(),
+        _stream_llm(resp),
         media_type="application/x-ndjson",
     )
-
-
-

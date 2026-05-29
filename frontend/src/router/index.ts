@@ -1,16 +1,14 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import DashboardView from '../views/DashboardView.vue'
-import SpindleView from '../views/SpindleView.vue'
-import DiagnosisView from '../views/DiagnosisView.vue'
-import EquipmentView from '../views/EquipmentView.vue'
+import SmartAnalysisView from '../views/SmartAnalysisView.vue'
+import SystemStatusView from '../views/SystemStatusView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', name: 'dashboard', component: DashboardView },
-    { path: '/spindle', name: 'spindle', component: SpindleView },
-    { path: '/diagnosis', name: 'diagnosis', component: DiagnosisView },
-    { path: '/equipment', name: 'equipment', component: EquipmentView },
+    { path: '/smart-analysis', name: 'smart-analysis', component: SmartAnalysisView },
+    { path: '/system-status', name: 'system-status', component: SystemStatusView },
   ],
 })
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, nextTick, onUnmounted, watch } from 'vue'
+import clawdThinkingGif from './clawd-thinking.gif'
 
 const open = ref(false)
 const model = ref('qwen')
@@ -251,18 +252,23 @@ onUnmounted(() => {
       >
         <!-- Header (drag handle) -->
         <div class="chat-header" @mousedown="onDragStart" @touchstart.prevent="onDragStart">
-          <span class="chat-title">AI 助手</span>
+          <div class="chat-title-wrap">
+            <span class="chat-title">AI 助手</span>
+          </div>
           <div class="header-actions">
-            <select
-              v-model="model"
-              class="model-select"
-              @mousedown.stop
-              @touchstart.stop
-            >
-              <option v-for="m in models" :key="m.value" :value="m.value">
-                {{ m.label }}
-              </option>
-            </select>
+            <div class="model-select-wrap">
+              <span class="model-label">MODEL</span>
+              <select
+                v-model="model"
+                class="model-select"
+                @mousedown.stop
+                @touchstart.stop
+              >
+                <option v-for="m in models" :key="m.value" :value="m.value">
+                  {{ m.label }}
+                </option>
+              </select>
+            </div>
             <button class="btn-close" @click="open = false" title="关闭 (Esc)">&times;</button>
           </div>
         </div>
@@ -270,7 +276,8 @@ onUnmounted(() => {
         <!-- Messages -->
         <div id="msg-area" class="msg-area">
           <div v-if="messages.length === 0" class="empty-hint">
-            👋 有什么可以帮你的？
+            <div class="empty-title">智能助手已就绪</div>
+            <div class="empty-copy">输入设备、工艺或知识问题，开始一段对话。</div>
           </div>
           <div
             v-for="(msg, i) in messages"
@@ -311,31 +318,7 @@ onUnmounted(() => {
       @touchstart.stop.prevent="onDragStart"
       @click="toggleOpen"
     >
-      <svg class="robot-icon-svg" viewBox="0 0 64 64" fill="none">
-        <!-- 外轮廓 - 六边形 -->
-        <path d="M32 4 L54 17 L54 43 L32 56 L10 43 L10 17 Z" stroke="white" stroke-width="2.5" fill="none" opacity="0.5"/>
-        <!-- 内轮廓 -->
-        <path d="M32 12 L48 22 L48 40 L32 50 L16 40 L16 22 Z" stroke="white" stroke-width="2" fill="none" opacity="0.8"/>
-        <!-- 顶部信号线 -->
-        <line x1="32" y1="2" x2="32" y2="12" stroke="white" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
-        <circle cx="32" cy="2" r="2.5" fill="white" opacity="0.9"/>
-        <!-- 左信号线 -->
-        <line x1="6" y1="20" x2="16" y2="22" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
-        <circle cx="6" cy="20" r="1.5" fill="white" opacity="0.5"/>
-        <!-- 右信号线 -->
-        <line x1="58" y1="20" x2="48" y2="22" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
-        <circle cx="58" cy="20" r="1.5" fill="white" opacity="0.5"/>
-        <!-- 左眼 - 菱形 -->
-        <path d="M24 28 L28 24 L32 28 L28 32 Z" fill="white" opacity="0.9"/>
-        <!-- 右眼 - 菱形 -->
-        <path d="M32 28 L36 24 L40 28 L36 32 Z" fill="white" opacity="0.9"/>
-        <!-- 嘴巴 - 科技线条 -->
-        <line x1="24" y1="39" x2="40" y2="39" stroke="white" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
-        <line x1="27" y1="42" x2="37" y2="42" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
-        <!-- 底部连接线 -->
-        <line x1="32" y1="56" x2="32" y2="60" stroke="white" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
-        <circle cx="32" cy="61" r="1.5" fill="white" opacity="0.6"/>
-      </svg>
+      <img :src="clawdThinkingGif" alt="AI Assistant" class="robot-icon" />
     </button>
   </div>
 </template>
@@ -357,35 +340,31 @@ onUnmounted(() => {
 
 /* ── float button ── */
 .float-btn {
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
+  width: 256px;
+  height: 256px;
+  border-radius: 18px;
   border: none;
-  background: linear-gradient(135deg, #0a1628 0%, #1a2744 100%);
-  box-shadow:
-    0 0 20px rgba(0, 180, 255, 0.3),
-    0 0 40px rgba(0, 180, 255, 0.1),
-    inset 0 0 15px rgba(0, 180, 255, 0.1);
+  background: transparent;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.2s, box-shadow 0.2s;
+  transition: transform 0.2s;
   user-select: none;
   position: absolute;
   bottom: 0;
   right: 0;
+  overflow: hidden;
+  padding: 0;
 }
 .float-btn:hover {
-  transform: scale(1.08);
-  box-shadow:
-    0 0 30px rgba(0, 180, 255, 0.5),
-    0 0 60px rgba(0, 180, 255, 0.15),
-    inset 0 0 20px rgba(0, 180, 255, 0.15);
+  transform: scale(1.06) translateY(-2px);
 }
-.robot-icon-svg {
-  width: 34px;
-  height: 34px;
+.robot-icon {
+  width: 240px;
+  height: 240px;
+  border-radius: 16px;
+  object-fit: cover;
 }
 
 /* ── chat window ── */
@@ -393,11 +372,10 @@ onUnmounted(() => {
   position: absolute;
   bottom: 8px;
   right: 8px;
-  background: rgba(16, 20, 48, 0.92);
-  backdrop-filter: blur(20px);
+  background: #fff;
   border-radius: 16px;
-  border: 1px solid rgba(100, 126, 234, 0.2);
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
+  border: 1px solid #e0e0e0;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -423,11 +401,11 @@ onUnmounted(() => {
   right: 6px;
   width: 10px;
   height: 10px;
-  border-right: 2px solid rgba(224, 230, 240, 0.3);
-  border-bottom: 2px solid rgba(224, 230, 240, 0.3);
+  border-right: 2px solid #ccc;
+  border-bottom: 2px solid #ccc;
 }
 .resize-handle:hover::after {
-  border-color: rgba(100, 126, 234, 0.6);
+  border-color: #4a90d9;
 }
 
 /* ── header ── */
@@ -435,8 +413,8 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #4a90d9 0%, #357abd 100%);
   color: #fff;
   cursor: grab;
   user-select: none;
@@ -445,58 +423,90 @@ onUnmounted(() => {
 .chat-header:active {
   cursor: grabbing;
 }
+.chat-title-wrap {
+  display: flex;
+  align-items: center;
+}
 .chat-title {
-  font-weight: 600;
-  font-size: 15px;
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 0.5px;
 }
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+}
+.model-select-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.model-label {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 600;
 }
 .model-select {
-  padding: 4px 8px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.35);
+  min-width: 110px;
+  padding: 6px 24px 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
   background: rgba(255, 255, 255, 0.15);
   color: #fff;
   font-size: 12px;
   cursor: pointer;
   outline: none;
+  appearance: none;
 }
 .model-select option {
   color: #333;
   background: #fff;
 }
 .btn-close {
-  background: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.15);
   border: none;
   color: #fff;
-  font-size: 22px;
+  font-size: 18px;
   cursor: pointer;
-  padding: 0 4px;
+  padding: 0;
   line-height: 1;
-  opacity: 0.8;
+  transition: background 0.2s;
 }
 .btn-close:hover {
-  opacity: 1;
+  background: rgba(255, 255, 255, 0.3);
 }
 
 /* ── messages ── */
 .msg-area {
   flex: 1;
   overflow-y: auto;
-  padding: 12px 16px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  background: transparent;
+  background: #f8f9fb;
 }
 .empty-hint {
   text-align: center;
-  color: rgba(224, 230, 240, 0.35);
+  color: #999;
   margin-top: 60px;
-  font-size: 15px;
+  padding: 18px;
+}
+.empty-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #555;
+  margin-bottom: 6px;
+}
+.empty-copy {
+  font-size: 13px;
+  line-height: 1.7;
+  color: #aaa;
 }
 .msg {
   max-width: 85%;
@@ -505,21 +515,22 @@ onUnmounted(() => {
   align-self: flex-end;
 }
 .msg.user .msg-content {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #4a90d9 0%, #5ba0e8 100%);
   color: #fff;
-  border-radius: 14px 14px 4px 14px;
+  border-radius: 16px 16px 4px 16px;
+  box-shadow: 0 2px 8px rgba(74, 144, 217, 0.2);
 }
 .msg.assistant {
   align-self: flex-start;
 }
 .msg.assistant .msg-content {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(100, 126, 234, 0.2);
-  border-radius: 14px 14px 14px 4px;
-  color: #e0e6f0;
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 16px 16px 16px 4px;
+  color: #333;
 }
 .msg-content {
-  padding: 10px 14px;
+  padding: 12px 14px;
   font-size: 14px;
   line-height: 1.6;
   white-space: pre-wrap;
@@ -527,63 +538,66 @@ onUnmounted(() => {
 }
 .status-line {
   text-align: center;
-  color: rgba(224, 230, 240, 0.4);
+  color: #aaa;
   font-size: 12px;
 }
 
 /* ── input area ── */
 .input-area {
   display: flex;
-  gap: 6px;
-  padding: 10px 12px;
-  border-top: 1px solid rgba(100, 126, 234, 0.15);
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid #eee;
   flex-shrink: 0;
-  background: rgba(0, 0, 0, 0.2);
+  background: #fff;
 }
 .input-area input {
   flex: 1;
-  padding: 10px 12px;
+  padding: 10px 14px;
   font-size: 14px;
-  border: 1px solid rgba(100, 126, 234, 0.25);
+  border: 1px solid #ddd;
   border-radius: 10px;
   outline: none;
-  background: rgba(255, 255, 255, 0.06);
-  color: #e0e6f0;
-  transition: border-color 0.2s;
+  background: #f5f6f8;
+  color: #333;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 .input-area input::placeholder {
-  color: rgba(224, 230, 240, 0.3);
+  color: #bbb;
 }
 .input-area input:focus {
-  border-color: #667eea;
+  border-color: #4a90d9;
+  box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.1);
 }
 .btn-send,
 .btn-stop {
-  padding: 10px 16px;
+  padding: 10px 18px;
   font-size: 13px;
   border-radius: 10px;
   border: none;
   cursor: pointer;
-  font-weight: 500;
+  font-weight: 600;
   white-space: nowrap;
 }
 .btn-send {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #4a90d9;
   color: #fff;
+  transition: background 0.2s;
 }
 .btn-send:hover {
-  opacity: 0.9;
+  background: #357abd;
 }
 .btn-send:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 .btn-stop {
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(224, 230, 240, 0.6);
+  background: #f0f0f0;
+  color: #888;
+  border: 1px solid #ddd;
 }
 .btn-stop:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background: #e5e5e5;
 }
 
 /* ── transitions ── */

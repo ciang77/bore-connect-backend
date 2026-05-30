@@ -151,7 +151,15 @@ const alarmDistribution = ref([
   { name: '其他故障', value: 5 },
 ])
 
-const donutColors = [RED, ORANGE, PURPLE, BLUE, '#26c6da', '#ab47bc', '#78909c']
+const donutColors = [
+  { start: '#00e5ff', end: '#0091ea' },
+  { start: '#536dfe', end: '#304ffe' },
+  { start: '#b388ff', end: '#7c4dff' },
+  { start: '#18ffff', end: '#00bfa5' },
+  { start: '#ff8a80', end: '#ff5252' },
+  { start: '#ffd740', end: '#ffab00' },
+  { start: '#69f0ae', end: '#00c853' },
+]
 
 // ── Module 6: Trend Analysis ───────────────────────────────────────
 const trendTimeRange = ref<'24h' | '7d'>('24h')
@@ -287,7 +295,7 @@ function buildHealthGaugeOption(val: number) {
         textShadowColor: color,
         textShadowBlur: 14,
       },
-      data: [{ value: val, name: '主轴电机健康度' }],
+      data: [{ value: val, name: '龙门镗铣床健康度' }],
     }],
   }
 }
@@ -298,42 +306,86 @@ function buildDonutChartOption(data: { name: string; value: number }[]) {
       trigger: 'item',
       backgroundColor: 'rgba(6,14,38,0.94)',
       borderColor: 'rgba(0,200,255,0.4)',
+      borderWidth: 1,
+      padding: [10, 14],
       textStyle: { color: '#f0f4fa', fontSize: 14 },
       formatter: (params: any) =>
         `<b style="font-size:15px">${params.name}</b><br/>数量: <b style="color:${params.color};font-size:18px">${params.value}</b><br/>占比: <b style="font-size:15px">${params.percent}%</b>`,
     },
+    legend: {
+      orient: 'vertical',
+      right: 12,
+      top: 'center',
+      itemWidth: 8,
+      itemHeight: 8,
+      itemGap: 12,
+      icon: 'roundRect',
+      textStyle: {
+        color: 'rgba(210,230,248,0.78)',
+        fontSize: 12,
+        fontWeight: 500,
+        rich: {},
+      },
+    },
     series: [{
       type: 'pie',
-      radius: ['48%', '74%'],
-      center: ['50%', '50%'],
+      radius: ['0%', '70%'],
+      center: ['40%', '50%'],
       avoidLabelOverlap: false,
-      itemStyle: { borderRadius: 4, borderColor: 'rgba(6,18,46,0.8)', borderWidth: 3 },
+      itemStyle: {
+        borderColor: 'rgba(6,18,46,0.9)',
+        borderWidth: 3,
+        borderRadius: 3,
+        shadowBlur: 16,
+        shadowColor: 'rgba(0,0,0,0.4)',
+      },
       label: {
         show: true,
         position: 'outside',
-        formatter: '{b}',
-        color: 'rgba(210,230,248,0.85)',
-        fontWeight: 'bold',
-        fontSize: 12,
+        formatter: '{b|{b}}\n{per|{d}%}',
+        rich: {
+          b: {
+            color: 'rgba(210,230,248,0.85)',
+            fontSize: 12,
+            fontWeight: 600,
+            lineHeight: 18,
+          },
+          per: {
+            color: 'rgba(160,210,240,0.65)',
+            fontSize: 11,
+            fontWeight: 500,
+            lineHeight: 16,
+          },
+        },
       },
       labelLine: {
         show: true,
-        length: 16,
-        length2: 36,
-        lineStyle: { color: 'rgba(150,200,240,0.35)', width: 1.5 },
+        length: 18,
+        length2: 28,
+        lineStyle: { color: 'rgba(150,200,240,0.25)', width: 1 },
       },
       emphasis: {
-        label: { show: true, fontSize: 18, fontWeight: 'bold' },
-        scaleSize: 12,
+        disabled: false,
+        scale: true,
+        scaleSize: 14,
+        focus: 'self',
+        label: { show: true, fontSize: 15, fontWeight: 'bold' },
+        itemStyle: {
+          shadowBlur: 28,
+          shadowColor: 'rgba(0,0,0,0.6)',
+          borderWidth: 5,
+        },
       },
       data: data.map((item, i) => ({
         value: item.value,
         name: item.name,
-        itemStyle: { color: donutColors[i] },
-        label: {
-          color: 'rgba(210,230,248,0.85)',
-          fontWeight: 'bold',
-          fontSize: 12,
+        itemStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 1, 1, [
+            { offset: 0, color: donutColors[i].start },
+            { offset: 1, color: donutColors[i].end },
+          ]),
+          shadowBlur: 10,
+          shadowColor: donutColors[i].start + '33',
         },
       })),
     }],
@@ -564,10 +616,7 @@ onUnmounted(() => {
           <div class="header-left">
             <span class="header-icon device-icon"></span>
             <span class="header-title">设备运行状态</span>
-            <span class="header-badge" :class="statusClass">{{ statusText }}</span>
-          </div>
-          <div class="header-right">
-            <span class="header-unit">DEVICE STATUS</span>
+            <span class="header-status-text" :class="statusClass">{{ statusText }}</span>
           </div>
         </div>
         <div class="card-corners">
@@ -635,11 +684,8 @@ onUnmounted(() => {
         <div class="card-header">
           <div class="header-left">
             <span class="header-icon motor-icon"></span>
-            <span class="header-title">电机健康度</span>
+            <span class="header-title">龙门镗铣床健康度</span>
             <span class="header-badge" :class="healthLevel.cls">{{ healthLevel.text }}</span>
-          </div>
-          <div class="header-right">
-            <span class="header-unit">MOTOR HEALTH</span>
           </div>
         </div>
         <div class="card-corners">
@@ -652,44 +698,32 @@ onUnmounted(() => {
       </div>
 
       <!-- ════════════════════════════════════════════════════════════
-           MODULE 3: Real-time Alarms & Events
+           MODULE 3: Key Parameter Trend Analysis
            ════════════════════════════════════════════════════════════ -->
-      <div class="card alarm-card">
+      <div class="card trend-card">
         <div class="card-header">
           <div class="header-left">
-            <span class="header-icon alarm-icon"></span>
-            <span class="header-title">实时报警与事件</span>
-            <span class="header-badge badge-danger">{{ alarmEvents.filter(e => e.level === 'critical').length }} 严重</span>
+            <span class="header-icon trend-icon"></span>
+            <span class="header-title">关键参数趋势分析</span>
           </div>
-          <div class="header-right">
-            <span class="header-unit">ALARMS & EVENTS</span>
+          <div class="header-right trend-controls">
+            <button
+              class="range-btn"
+              :class="{ active: trendTimeRange === '24h' }"
+              @click="switchTimeRange('24h')"
+            >24H</button>
+            <button
+              class="range-btn"
+              :class="{ active: trendTimeRange === '7d' }"
+              @click="switchTimeRange('7d')"
+            >7D</button>
           </div>
         </div>
         <div class="card-corners">
           <span class="c-tl"></span><span class="c-tr"></span><span class="c-bl"></span><span class="c-br"></span>
         </div>
-        <div class="card-body alarm-body">
-          <div class="alarm-list">
-            <div
-              v-for="(event, idx) in alarmEvents"
-              :key="idx"
-              class="alarm-row"
-              :class="'alarm-' + event.level"
-            >
-              <div class="alarm-time">{{ event.time }}</div>
-              <div class="alarm-dot" :class="'dot-' + event.level"></div>
-              <div class="alarm-content">
-                <div class="alarm-type-row">
-                  <span class="alarm-type-badge" :class="'type-' + event.level">
-                    {{ event.isAlarm ? (event.level === 'critical' ? '严重' : '一般') : '事件' }}
-                  </span>
-                  <span class="alarm-type">{{ event.type }}</span>
-                  <span class="alarm-system">{{ event.system }}</span>
-                </div>
-                <div class="alarm-desc">{{ event.description }}</div>
-              </div>
-            </div>
-          </div>
+        <div class="card-body trend-body">
+          <div class="chart-fullwrap" ref="trendChartRef"></div>
         </div>
         <div class="card-scan-line"></div>
       </div>
@@ -702,9 +736,6 @@ onUnmounted(() => {
           <div class="header-left">
             <span class="header-icon subsystem-icon"></span>
             <span class="header-title">子系统运行状态</span>
-          </div>
-          <div class="header-right">
-            <span class="header-unit">SUBSYSTEM STATUS</span>
           </div>
         </div>
         <div class="card-corners">
@@ -755,9 +786,6 @@ onUnmounted(() => {
             <span class="header-icon chart-icon"></span>
             <span class="header-title">报警类型分布</span>
           </div>
-          <div class="header-right">
-            <span class="header-unit">ALARM DISTRIBUTION</span>
-          </div>
         </div>
         <div class="card-corners">
           <span class="c-tl"></span><span class="c-tr"></span><span class="c-bl"></span><span class="c-br"></span>
@@ -769,32 +797,41 @@ onUnmounted(() => {
       </div>
 
       <!-- ════════════════════════════════════════════════════════════
-           MODULE 6: Key Parameter Trend Analysis
+           MODULE 6: Real-time Alarms & Events
            ════════════════════════════════════════════════════════════ -->
-      <div class="card trend-card">
+      <div class="card alarm-card">
         <div class="card-header">
           <div class="header-left">
-            <span class="header-icon trend-icon"></span>
-            <span class="header-title">关键参数趋势分析</span>
-          </div>
-          <div class="header-right trend-controls">
-            <button
-              class="range-btn"
-              :class="{ active: trendTimeRange === '24h' }"
-              @click="switchTimeRange('24h')"
-            >24H</button>
-            <button
-              class="range-btn"
-              :class="{ active: trendTimeRange === '7d' }"
-              @click="switchTimeRange('7d')"
-            >7D</button>
+            <span class="header-icon alarm-icon"></span>
+            <span class="header-title">实时报警与事件</span>
+            <span class="header-badge badge-danger">{{ alarmEvents.filter(e => e.level === 'critical').length }} 严重</span>
           </div>
         </div>
         <div class="card-corners">
           <span class="c-tl"></span><span class="c-tr"></span><span class="c-bl"></span><span class="c-br"></span>
         </div>
-        <div class="card-body trend-body">
-          <div class="chart-fullwrap" ref="trendChartRef"></div>
+        <div class="card-body alarm-body">
+          <div class="alarm-list">
+            <div
+              v-for="(event, idx) in alarmEvents"
+              :key="idx"
+              class="alarm-row"
+              :class="'alarm-' + event.level"
+            >
+              <div class="alarm-time">{{ event.time }}</div>
+              <div class="alarm-dot" :class="'dot-' + event.level"></div>
+              <div class="alarm-content">
+                <div class="alarm-type-row">
+                  <span class="alarm-type-badge" :class="'type-' + event.level">
+                    {{ event.isAlarm ? (event.level === 'critical' ? '严重' : '一般') : '事件' }}
+                  </span>
+                  <span class="alarm-type">{{ event.type }}</span>
+                  <span class="alarm-system">{{ event.system }}</span>
+                </div>
+                <div class="alarm-desc">{{ event.description }}</div>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="card-scan-line"></div>
       </div>
@@ -805,9 +842,9 @@ onUnmounted(() => {
 <style scoped>
 /* ── Root ─────────────────────────────────────────────────────────── */
 .dashboard-view {
-  height: calc(100vh - 210px);
+  height: 100%;
   overflow: hidden;
-  padding: 6px 18px 0;
+  padding: 0 18px;
   position: relative;
   z-index: 1;
 }
@@ -927,20 +964,20 @@ onUnmounted(() => {
   font-weight: 600;
 }
 
+.header-status-text {
+  font-size: 14px;
+  letter-spacing: 1px;
+  font-weight: 600;
+}
+
 .badge-normal { background: rgba(105,240,174,0.14); color: #69f0ae; border: 1px solid rgba(105,240,174,0.25); }
 .badge-warning { background: rgba(255,171,64,0.14); color: #ffab40; border: 1px solid rgba(255,171,64,0.25); }
 .badge-danger { background: rgba(255,82,82,0.14); color: #ff5252; border: 1px solid rgba(255,82,82,0.25); animation: danger-blink 1s ease-in-out infinite; }
 
-.status-running { background: rgba(105,240,174,0.14); color: #69f0ae; border: 1px solid rgba(105,240,174,0.25); }
-.status-standby { background: rgba(68,138,255,0.14); color: #448aff; border: 1px solid rgba(68,138,255,0.25); }
-.status-stop { background: rgba(255,171,64,0.14); color: #ffab40; border: 1px solid rgba(255,171,64,0.25); }
-.status-fault { background: rgba(255,82,82,0.14); color: #ff5252; border: 1px solid rgba(255,82,82,0.25); animation: danger-blink 1s ease-in-out infinite; }
-
-.header-unit {
-  font-size: 12px;
-  letter-spacing: 2px;
-  color: rgba(150, 200, 230, 0.55);
-}
+.status-running { color: #69f0ae; }
+.status-standby { color: #448aff; }
+.status-stop { color: #ffab40; }
+.status-fault { color: #ff5252; }
 
 .header-right {
   display: flex;

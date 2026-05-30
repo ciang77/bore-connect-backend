@@ -12,9 +12,9 @@ let timer: ReturnType<typeof setInterval> | undefined
 const weekdays = ['日', '一', '二', '三', '四', '五', '六']
 
 const navItems = [
-  { name: 'dashboard', cn: '总览', en: 'Dashboard', path: '/', icon: '◈' },
-  { name: 'smart-analysis', cn: '智能分析', en: 'Analysis', path: '/smart-analysis', icon: '◆' },
-  { name: 'system-status', cn: '系统状态', en: 'Status', path: '/system-status', icon: '◉' },
+  { name: 'dashboard', cn: '总览', path: '/', icon: '◈' },
+  { name: 'smart-analysis', cn: '智能分析', path: '/smart-analysis', icon: '◆' },
+  { name: 'system-status', cn: '系统状态', path: '/system-status', icon: '◉' },
 ]
 
 function pad(n: number): string {
@@ -59,15 +59,15 @@ onUnmounted(() => {
         <div class="top-bar-left">
           <div class="status-panel">
             <div class="status-frame">
-              <div class="status-meta">SYSTEM STATUS</div>
+              <div class="status-meta">系统状态</div>
               <div class="status-row">
                 <span class="status-dot"></span>
-                <span class="status-name">CNC CONTROL CORE</span>
+                <span class="status-name">数控系统核心</span>
               </div>
               <div class="status-subrow">
-                <span class="status-online">ONLINE</span>
+                <span class="status-online">运行中</span>
                 <span class="status-divider"></span>
-                <span class="status-desc">EDGE NODE CONNECTED</span>
+                <span class="status-desc">边缘节点已连接</span>
               </div>
             </div>
           </div>
@@ -83,7 +83,6 @@ onUnmounted(() => {
             <div class="title-glow"></div>
             <div class="title-code">SYSTEM-ID: CNC-HUB-01</div>
             <h1 class="main-title">龙门镗铣床智能管理平台</h1>
-            <div class="title-subline">LONGMEN BORING &amp; MILLING MACHINE INTELLIGENT CONTROL CENTER</div>
             <div class="title-bracket title-bracket-left"></div>
             <div class="title-bracket title-bracket-right"></div>
           </div>
@@ -96,20 +95,16 @@ onUnmounted(() => {
 
         <div class="top-bar-right">
           <div class="datetime-card">
-            <div class="datetime-label">REALTIME CLOCK</div>
             <div class="datetime-block">
               <div class="datetime-segment">
-                <span class="segment-kicker">DATE</span>
                 <span class="date-text">{{ formatDate(now) }}</span>
               </div>
               <span class="divider"></span>
               <div class="datetime-segment">
-                <span class="segment-kicker">WEEK</span>
                 <span class="weekday-text">{{ weekday(now) }}</span>
               </div>
               <span class="divider"></span>
               <div class="datetime-segment time-segment">
-                <span class="segment-kicker">TIME</span>
                 <span class="time-text">{{ formatTime(now) }}</span>
               </div>
             </div>
@@ -124,19 +119,24 @@ onUnmounted(() => {
     </main>
 
     <nav class="bottom-nav">
-      <button
-        v-for="item in navItems"
-        :key="item.name"
-        class="nav-item"
-        :class="{ active: route.name === item.name }"
-        @click="router.push(item.path)"
-      >
-        <span class="nav-icon">{{ item.icon }}</span>
-        <span class="nav-text">
+      <div class="nav-corner nav-corner-tl"></div>
+      <div class="nav-corner nav-corner-tr"></div>
+      <div class="nav-corner nav-corner-bl"></div>
+      <div class="nav-corner nav-corner-br"></div>
+      <div class="nav-glow"></div>
+      <div class="nav-noise"></div>
+      <div class="nav-inner">
+        <button
+          v-for="item in navItems"
+          :key="item.name"
+          class="nav-item"
+          :class="{ active: route.name === item.name }"
+          @click="router.push(item.path)"
+        >
+          <span class="nav-icon">{{ item.icon }}</span>
           <span class="nav-label-cn">{{ item.cn }}</span>
-          <span class="nav-label-en">{{ item.en }}</span>
-        </span>
-      </button>
+        </button>
+      </div>
     </nav>
 
     <ChatBot />
@@ -170,6 +170,8 @@ body {
   overflow: hidden;
   background: linear-gradient(135deg, #0a0e27 0%, #1a1040 40%, #0d1b3e 100%);
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 .bg-grid {
@@ -207,10 +209,10 @@ body {
 }
 
 .top-bar {
-  position: sticky;
-  top: 10px;
+  position: relative;
   z-index: 40;
-  margin: 0 16px;
+  margin: 10px 16px 0;
+  flex-shrink: 0;
   background:
     linear-gradient(180deg, rgba(10, 14, 39, 0.96) 0%, rgba(6, 12, 34, 0.9) 100%),
     linear-gradient(90deg, rgba(0, 229, 255, 0.08), transparent 18%, rgba(102, 126, 234, 0.08) 50%, transparent 82%, rgba(0, 180, 255, 0.08));
@@ -516,6 +518,8 @@ body {
   min-height: 50px;
   min-width: 280px;
   padding: 8px 12px;
+  display: flex;
+  align-items: center;
   border: 1px solid rgba(54, 168, 255, 0.18);
   border-radius: 10px;
   background:
@@ -537,7 +541,7 @@ body {
 
 .datetime-block {
   display: grid;
-  grid-template-columns: 1fr auto 0.8fr auto 1fr;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
   align-items: stretch;
   gap: 10px;
   white-space: nowrap;
@@ -546,6 +550,7 @@ body {
 .datetime-segment {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 3px;
 }
 
@@ -570,7 +575,7 @@ body {
 }
 
 .time-segment {
-  align-items: flex-end;
+  align-items: center;
 }
 
 .time-text {
@@ -604,18 +609,92 @@ body {
 .content {
   position: relative;
   z-index: 1;
-  padding-top: 12px;
+  flex: 1;
+  overflow: hidden;
+  padding: 10px 0;
 }
 
 .bottom-nav {
-  position: fixed;
-  left: 50%;
-  bottom: 18px;
-  transform: translateX(-50%);
+  position: relative;
+  align-self: center;
   z-index: 50;
+  flex-shrink: 0;
+  margin-bottom: 10px;
+  background:
+    linear-gradient(180deg, rgba(6, 12, 34, 0.9) 0%, rgba(10, 14, 39, 0.96) 100%),
+    linear-gradient(90deg, rgba(0, 229, 255, 0.08), transparent 18%, rgba(102, 126, 234, 0.08) 50%, transparent 82%, rgba(0, 180, 255, 0.08));
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(0, 180, 255, 0.24);
+  border-radius: 16px;
+  padding: 10px 20px;
+  box-shadow:
+    inset 0 0 0 1px rgba(120, 223, 255, 0.05),
+    inset 0 0 28px rgba(0, 180, 255, 0.06),
+    0 10px 28px rgba(0, 0, 0, 0.34),
+    0 0 28px rgba(0, 116, 255, 0.12);
+  overflow: hidden;
+}
+
+.nav-inner {
   display: flex;
-  gap: 28px;
-  padding: 0;
+  align-items: center;
+  gap: 32px;
+  position: relative;
+  z-index: 1;
+}
+
+.nav-glow {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 100%, rgba(32, 196, 255, 0.16), transparent 36%),
+    linear-gradient(90deg, transparent, rgba(54, 204, 255, 0.06), transparent);
+  pointer-events: none;
+}
+
+.nav-noise {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035) 0, rgba(255, 255, 255, 0.035) 1px, transparent 1px, transparent 4px);
+  opacity: 0.18;
+  pointer-events: none;
+}
+
+.nav-corner {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+  opacity: 0.9;
+}
+
+.nav-corner-tl {
+  top: 4px;
+  left: 4px;
+  border-top: 1.5px solid rgba(0, 229, 255, 0.5);
+  border-left: 1.5px solid rgba(0, 229, 255, 0.5);
+}
+
+.nav-corner-tr {
+  top: 4px;
+  right: 4px;
+  border-top: 1.5px solid rgba(0, 229, 255, 0.5);
+  border-right: 1.5px solid rgba(0, 229, 255, 0.5);
+}
+
+.nav-corner-bl {
+  bottom: 4px;
+  left: 4px;
+  border-bottom: 1.5px solid rgba(102, 126, 234, 0.5);
+  border-left: 1.5px solid rgba(102, 126, 234, 0.5);
+}
+
+.nav-corner-br {
+  bottom: 4px;
+  right: 4px;
+  border-bottom: 1.5px solid rgba(102, 126, 234, 0.5);
+  border-right: 1.5px solid rgba(102, 126, 234, 0.5);
 }
 
 .nav-item {
@@ -652,26 +731,10 @@ body {
   text-shadow: 0 0 10px rgba(0, 229, 255, 0.4);
 }
 
-.nav-text {
-  display: flex;
-  flex-direction: column;
-}
-
 .nav-label-cn {
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.3;
-}
-
-.nav-label-en {
-  font-size: 10px;
-  letter-spacing: 1px;
-  color: rgba(224, 230, 240, 0.4);
-  line-height: 1.3;
-}
-
-.nav-item.active .nav-label-en {
-  color: rgba(0, 229, 255, 0.5);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 @keyframes pulse-dot {

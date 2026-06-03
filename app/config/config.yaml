@@ -1,0 +1,16 @@
+server:
+  host: "127.0.0.1"
+  port: 8022
+
+machine:
+  name: "龙门镗铣床"
+  max_temperature: 80
+
+database:
+  url: "sqlite:///./bore.db"
+
+websocket:
+  enable: true
+
+log:
+  level: "INFO"

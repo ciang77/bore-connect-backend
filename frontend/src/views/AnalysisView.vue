@@ -1675,7 +1675,7 @@ export default {
 }
 
 .subsystem-title {
-  font-size: 0.8vw;
+  font-size: 15px;
   font-weight: 600;
   color: #87ceeb;
   padding-bottom: 4px;
@@ -1692,8 +1692,8 @@ export default {
 
 .subsystem-dot {
   display: inline-block;
-  width: 0.5vw;
-  height: 0.5vw;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: #00ff88;
   box-shadow: 0 0 4px rgba(0, 255, 136, 0.6);
@@ -1735,7 +1735,7 @@ export default {
 }
 
 .cell-label {
-  font-size: 0.65vw;
+  font-size: 12px;
   color: rgba(255, 255, 255, 0.55);
   grid-column: 1;
   grid-row: 1;
@@ -1745,7 +1745,7 @@ export default {
 }
 
 .cell-value {
-  font-size: 0.8vw;
+  font-size: 15px;
   font-weight: 700;
   color: #00ff88;
   grid-column: 2;
@@ -1765,7 +1765,7 @@ export default {
 }
 
 .cell-unit {
-  font-size: 0.55vw;
+  font-size: 11px;
   color: rgba(255, 255, 255, 0.3);
   grid-column: 1;
   grid-row: 2;

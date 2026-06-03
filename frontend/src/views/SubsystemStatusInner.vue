@@ -232,8 +232,8 @@ onUnmounted(() => {
 }
 
 .sub-card-status-light {
-  width: 0.5vw;
-  height: 0.5vw;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   flex-shrink: 0;
 }
@@ -245,14 +245,14 @@ onUnmounted(() => {
 .light-stopped { background: #ff5252; box-shadow: 0 0 6px rgba(255, 82, 82, 0.6); animation: fault-pulse 0.6s ease-in-out infinite; }
 
 .sub-card-name {
-  font-size: 0.9vw;
+  font-size: 17px;
   font-weight: 700;
   color: rgba(225, 240, 255, 0.93);
   white-space: nowrap;
 }
 
 .sub-card-status-tag {
-  font-size: 0.6vw;
+  font-size: 12px;
   padding: 1px 4px;
   border-radius: 4px;
   font-weight: 600;
@@ -273,12 +273,12 @@ onUnmounted(() => {
 }
 
 .sub-health-label {
-  font-size: 0.5vw;
+  font-size: 10px;
   color: rgba(150, 200, 230, 0.5);
 }
 
 .sub-health-score {
-  font-size: 0.85vw;
+  font-size: 16px;
   font-weight: 700;
 }
 
@@ -298,7 +298,7 @@ onUnmounted(() => {
 }
 
 .sub-param-label {
-  font-size: 0.6vw;
+  font-size: 12px;
   color: rgba(160, 210, 235, 0.65);
   white-space: nowrap;
   overflow: hidden;
@@ -306,14 +306,14 @@ onUnmounted(() => {
 }
 
 .sub-param-value {
-  font-size: 0.7vw;
+  font-size: 13px;
   font-weight: 700;
   color: rgba(225, 245, 255, 0.94);
   white-space: nowrap;
 }
 
 .sub-param-unit {
-  font-size: 0.5vw;
+  font-size: 10px;
   font-weight: 400;
   color: rgba(170, 210, 235, 0.5);
   margin-left: 1px;

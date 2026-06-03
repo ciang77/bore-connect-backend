@@ -11,107 +11,168 @@ const messages = ref<{ role: 'user' | 'assistant'; content: string }[]>([])
 
 let controller: AbortController | null = null
 
+const widgetRoot = ref<HTMLElement | null>(null)
 const widgetPos = ref({ x: 0, y: 0 })
 const isDragging = ref(false)
 const hasDragged = ref(false)
 const dragStart = ref({ x: 0, y: 0 })
 const dragOffset = ref({ x: 0, y: 0 })
 const snapSide = ref<'left' | 'right'>('right')
+const dragThreshold = 8
+const edgeMargin = 20
+const floatButtonSize = { w: 256, h: 256 }
+const chatInset = 8
+let dragPointerId: number | null = null
 
 const chatSize = ref({ w: 400, h: 560 })
 const isResizing = ref(false)
 const resizeStart = ref({ x: 0, y: 0 })
 const resizeOffset = ref({ w: 0, h: 0 })
+let resizePointerId: number | null = null
 
 const models = [
   { value: 'qwen', label: 'Qwen 3.6' },
   { value: 'deepseek', label: 'DeepSeek V4' },
 ]
 
-// ── drag logic ──
-function onDragStart(e: MouseEvent | TouchEvent) {
-  isDragging.value = true
-  hasDragged.value = false
-  const p = 'touches' in e ? e.touches[0] : e
-  dragStart.value = { x: p.clientX, y: p.clientY }
-  dragOffset.value = { x: widgetPos.value.x, y: widgetPos.value.y }
-  document.addEventListener('mousemove', onDragMove)
-  document.addEventListener('mouseup', onDragEnd, { capture: true })
-  document.addEventListener('touchmove', onDragMove, { passive: false })
-  document.addEventListener('touchend', onDragEnd, { capture: true })
+function getPoint(e: PointerEvent | MouseEvent | TouchEvent) {
+  return 'touches' in e ? e.touches[0] : e
 }
 
-function onDragMove(e: MouseEvent | TouchEvent) {
-  if (!isDragging.value) return
-  e.preventDefault()
-  const p = 'touches' in e ? e.touches[0] : e
-  const dx = p.clientX - dragStart.value.x
-  const dy = p.clientY - dragStart.value.y
-  if (Math.abs(dx) > 3 || Math.abs(dy) > 3) hasDragged.value = true
-  widgetPos.value = {
-    x: dragOffset.value.x + dx,
-    y: dragOffset.value.y + dy,
+function getActiveBounds() {
+  return open.value
+    ? { width: chatSize.value.w, height: chatSize.value.h, inset: chatInset }
+    : { width: floatButtonSize.w, height: floatButtonSize.h, inset: 0 }
+}
+
+function clampWidgetPos(nextX: number, nextY: number) {
+  const bounds = getActiveBounds()
+  const minX = edgeMargin + bounds.width + bounds.inset - window.innerWidth
+  const maxX = bounds.inset - edgeMargin
+  const minY = edgeMargin + bounds.height + bounds.inset - window.innerHeight
+  const maxY = bounds.inset - edgeMargin
+
+  return {
+    x: Math.min(maxX, Math.max(minX, nextX)),
+    y: Math.min(maxY, Math.max(minY, nextY)),
   }
 }
 
-function onDragEnd() {
+function bindDragListeners() {
+  window.addEventListener('pointermove', onDragMove)
+  window.addEventListener('pointerup', onDragEnd, { capture: true })
+  window.addEventListener('pointercancel', onDragEnd, { capture: true })
+  window.addEventListener('blur', onDragEnd)
+}
+
+function unbindDragListeners() {
+  window.removeEventListener('pointermove', onDragMove)
+  window.removeEventListener('pointerup', onDragEnd, { capture: true })
+  window.removeEventListener('pointercancel', onDragEnd, { capture: true })
+  window.removeEventListener('blur', onDragEnd)
+}
+
+// ── drag logic ──
+function onDragStart(e: PointerEvent) {
+  if (e.button !== 0 && e.pointerType !== 'touch') return
+  dragPointerId = e.pointerId
   isDragging.value = false
   hasDragged.value = false
-  document.removeEventListener('mousemove', onDragMove)
-  document.removeEventListener('mouseup', onDragEnd, { capture: true })
-  document.removeEventListener('touchmove', onDragMove)
-  document.removeEventListener('touchend', onDragEnd, { capture: true })
+  const p = getPoint(e)
+  dragStart.value = { x: p.clientX, y: p.clientY }
+  dragOffset.value = { x: widgetPos.value.x, y: widgetPos.value.y }
+  bindDragListeners()
+  ;(e.currentTarget as HTMLElement | null)?.setPointerCapture?.(e.pointerId)
+}
+
+function onDragMove(e: PointerEvent) {
+  if (dragPointerId !== null && e.pointerId !== dragPointerId) return
+  const p = getPoint(e)
+  const dx = p.clientX - dragStart.value.x
+  const dy = p.clientY - dragStart.value.y
+  if (!isDragging.value && Math.abs(dx) < dragThreshold && Math.abs(dy) < dragThreshold) return
+
+  e.preventDefault()
+  isDragging.value = true
+  hasDragged.value = true
+  widgetPos.value = clampWidgetPos(dragOffset.value.x + dx, dragOffset.value.y + dy)
+}
+
+function onDragEnd() {
+  dragPointerId = null
+  unbindDragListeners()
+  if (!isDragging.value && !hasDragged.value) return
+
+  isDragging.value = false
+  // 延迟重置 hasDragged，让 click 事件能读到拖拽状态
+  setTimeout(() => {
+    hasDragged.value = false
+  }, 0)
 }
 
 // ── snap to nearest edge ──
 function snapToEdge() {
   const viewportCenter = window.innerWidth / 2
-  const btnActualX = window.innerWidth + widgetPos.value.x - 30
-  if (btnActualX < viewportCenter) {
+  const widgetRight = window.innerWidth + widgetPos.value.x
+  if (widgetRight < viewportCenter) {
     snapSide.value = 'left'
-    widgetPos.value = { x: 20 - window.innerWidth, y: widgetPos.value.y }
+    widgetPos.value = clampWidgetPos(floatButtonSize.w + edgeMargin - window.innerWidth, widgetPos.value.y)
   } else {
     snapSide.value = 'right'
-    widgetPos.value = { x: -20, y: widgetPos.value.y }
+    widgetPos.value = clampWidgetPos(-edgeMargin, widgetPos.value.y)
   }
 }
 
 function initPosition() {
-  widgetPos.value = { x: -20, y: -20 }
+  widgetPos.value = clampWidgetPos(-edgeMargin, -edgeMargin)
   snapSide.value = 'right'
 }
 initPosition()
 
-// ── resize logic ──
-function onResizeStart(e: MouseEvent | TouchEvent) {
-  isResizing.value = true
-  const p = 'touches' in e ? e.touches[0] : e
-  resizeStart.value = { x: p.clientX, y: p.clientY }
-  resizeOffset.value = { w: chatSize.value.w, h: chatSize.value.h }
-  document.addEventListener('mousemove', onResizeMove)
-  document.addEventListener('mouseup', onResizeEnd)
-  document.addEventListener('touchmove', onResizeMove, { passive: false })
-  document.addEventListener('touchend', onResizeEnd)
-  e.preventDefault()
+function bindResizeListeners() {
+  window.addEventListener('pointermove', onResizeMove)
+  window.addEventListener('pointerup', onResizeEnd, { capture: true })
+  window.addEventListener('pointercancel', onResizeEnd, { capture: true })
+  window.addEventListener('blur', onResizeEnd)
 }
 
-function onResizeMove(e: MouseEvent | TouchEvent) {
+function unbindResizeListeners() {
+  window.removeEventListener('pointermove', onResizeMove)
+  window.removeEventListener('pointerup', onResizeEnd, { capture: true })
+  window.removeEventListener('pointercancel', onResizeEnd, { capture: true })
+  window.removeEventListener('blur', onResizeEnd)
+}
+
+// ── resize logic ──
+function onResizeStart(e: PointerEvent) {
+  if (e.button !== 0 && e.pointerType !== 'touch') return
+  resizePointerId = e.pointerId
+  isResizing.value = true
+  const p = getPoint(e)
+  resizeStart.value = { x: p.clientX, y: p.clientY }
+  resizeOffset.value = { w: chatSize.value.w, h: chatSize.value.h }
+  bindResizeListeners()
+  e.preventDefault()
+  ;(e.currentTarget as HTMLElement | null)?.setPointerCapture?.(e.pointerId)
+}
+
+function onResizeMove(e: PointerEvent) {
   if (!isResizing.value) return
-  const p = 'touches' in e ? e.touches[0] : e
+  if (resizePointerId !== null && e.pointerId !== resizePointerId) return
+  const p = getPoint(e)
   const dx = p.clientX - resizeStart.value.x
   const dy = p.clientY - resizeStart.value.y
   chatSize.value = {
     w: Math.max(300, Math.min(800, resizeOffset.value.w + dx)),
     h: Math.max(400, Math.min(window.innerHeight - 80, resizeOffset.value.h + dy)),
   }
+  widgetPos.value = clampWidgetPos(widgetPos.value.x, widgetPos.value.y)
 }
 
 function onResizeEnd() {
+  resizePointerId = null
   isResizing.value = false
-  document.removeEventListener('mousemove', onResizeMove)
-  document.removeEventListener('mouseup', onResizeEnd)
-  document.removeEventListener('touchmove', onResizeMove)
-  document.removeEventListener('touchend', onResizeEnd)
+  unbindResizeListeners()
 }
 
 // ── chat logic ──
@@ -211,15 +272,28 @@ function scrollBottom() {
   })
 }
 
-function toggleOpen() {
+function toggleOpen(e: MouseEvent) {
   if (hasDragged.value) return
+  e.stopPropagation()
   open.value = !open.value
   if (open.value) scrollBottom()
 }
 
 watch(open, (val) => {
-  if (!val) snapToEdge()
+  if (val) {
+    document.addEventListener('click', onClickOutside)
+    widgetPos.value = clampWidgetPos(widgetPos.value.x, widgetPos.value.y)
+  } else {
+    document.removeEventListener('click', onClickOutside)
+    snapToEdge()
+  }
 })
+
+function onClickOutside(e: MouseEvent) {
+  const target = e.target as Node | null
+  if (target && widgetRoot.value?.contains(target)) return
+  open.value = false
+}
 
 // esc to close
 function onKeydown(e: KeyboardEvent) {
@@ -230,15 +304,15 @@ window.addEventListener('keydown', onKeydown)
 onUnmounted(() => {
   abort()
   window.removeEventListener('keydown', onKeydown)
-  document.removeEventListener('mousemove', onDragMove)
-  document.removeEventListener('mouseup', onDragEnd)
-  document.removeEventListener('mousemove', onResizeMove)
-  document.removeEventListener('mouseup', onResizeEnd)
+  document.removeEventListener('click', onClickOutside)
+  unbindDragListeners()
+  unbindResizeListeners()
 })
 </script>
 
 <template>
   <div
+    ref="widgetRoot"
     class="widget-root"
     :class="{ dragging: isDragging }"
     :style="{ transform: `translate(${widgetPos.x}px, ${widgetPos.y}px)` }"
@@ -250,9 +324,10 @@ onUnmounted(() => {
         class="chat-window"
         :class="snapSide"
         :style="{ width: chatSize.w + 'px', height: chatSize.h + 'px' }"
+        @click.stop
       >
         <!-- Header (drag handle) -->
-        <div class="chat-header" @mousedown="onDragStart" @touchstart.prevent="onDragStart">
+        <div class="chat-header" @pointerdown.prevent="onDragStart">
           <div class="chat-title-wrap">
             <span class="chat-title">AI 助手</span>
           </div>
@@ -305,8 +380,7 @@ onUnmounted(() => {
         <!-- Resize handle -->
         <div
           class="resize-handle"
-          @mousedown="onResizeStart"
-          @touchstart.prevent="onResizeStart"
+          @pointerdown.prevent="onResizeStart"
         ></div>
       </div>
     </Transition>
@@ -315,11 +389,10 @@ onUnmounted(() => {
     <button
       v-show="!open"
       class="float-btn"
-      @mousedown.stop="onDragStart"
-      @touchstart.stop.prevent="onDragStart"
+      @pointerdown.stop.prevent="onDragStart"
       @click="toggleOpen"
     >
-      <img :src="clawdThinkingGif" alt="AI Assistant" class="robot-icon" />
+      <img :src="clawdThinkingGif" alt="AI Assistant" class="robot-icon" draggable="false" />
     </button>
   </div>
 </template>
@@ -357,6 +430,7 @@ onUnmounted(() => {
   right: 0;
   overflow: hidden;
   padding: 0;
+  touch-action: none;
 }
 .float-btn:hover {
   transform: scale(1.06) translateY(-2px);
@@ -394,6 +468,7 @@ onUnmounted(() => {
   width: 20px;
   height: 20px;
   cursor: nwse-resize;
+  touch-action: none;
 }
 .resize-handle::after {
   content: '';
@@ -420,6 +495,7 @@ onUnmounted(() => {
   cursor: grab;
   user-select: none;
   flex-shrink: 0;
+  touch-action: none;
 }
 .chat-header:active {
   cursor: grabbing;

@@ -329,7 +329,7 @@ export default {
 
 .title-text {
   color: #87ceeb;
-  font-size: 0.85vw;
+  font-size: 16px;
   font-weight: 700;
   text-align: center;
   text-shadow:
@@ -410,12 +410,12 @@ export default {
 }
 
 .info-label {
-  font-size: 0.6vw;
+  font-size: 12px;
   color: rgba(180, 210, 240, 0.7);
 }
 
 .info-value {
-  font-size: 0.65vw;
+  font-size: 12px;
   font-weight: 600;
   color: #a8d8ff;
   text-shadow: 0 0 4px rgba(168, 216, 255, 0.4);

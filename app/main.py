@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api.chat import router as chat_router
+from app.routers.overview import router as overview_router
 from app.config.settings import settings
 
 app = FastAPI(title="Bore Connect", version="1.0.0")
@@ -18,6 +19,7 @@ app.add_middleware(
 )
 
 app.include_router(chat_router)
+app.include_router(overview_router)
 
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.isdir(static_dir):

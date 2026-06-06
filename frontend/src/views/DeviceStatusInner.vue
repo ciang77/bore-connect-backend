@@ -1,18 +1,19 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { fetchDeviceStatus, type DeviceStatus } from '../api/overview'
 
 type DeviceState = 'online' | 'warning' | 'stopped'
 
-const deviceStatus = ref({
-  name: '龙门镗铣床',
-  model: 'TK6920',
-  status: 'online' as DeviceState,
-  runtime: '18.5h',
-  temperature: '42°C',
-  vibration: '2.1mm/s',
-  pressure: '15.2MPa',
-  spindleSpeed: '3200RPM',
-  servoCurrent: '12.3A',
+const deviceStatus = ref<DeviceStatus>({
+  name: '',
+  model: '',
+  status: 'online',
+  runtime: '',
+  temperature: '',
+  vibration: '',
+  pressure: '',
+  spindleSpeed: '',
+  servoCurrent: '',
 })
 
 let updateTimer: ReturnType<typeof setInterval> | undefined
@@ -28,28 +29,20 @@ const statusText = computed(() => {
   }
 })
 
-function updateData() {
-  deviceStatus.value.temperature = (40 + Math.random() * 10).toFixed(0) + '°C'
-  deviceStatus.value.vibration = (1.5 + Math.random() * 2).toFixed(1) + 'mm/s'
-  deviceStatus.value.pressure = (14 + Math.random() * 3).toFixed(1) + 'MPa'
-
-  const r = Math.random()
-  if (r < 0.05) deviceStatus.value.status = 'stopped'
-  else if (r < 0.18) deviceStatus.value.status = 'warning'
-  else deviceStatus.value.status = 'online'
-
-  const runtimeVal = Math.max(0, parseFloat(deviceStatus.value.runtime.replace('h', '')))
-  deviceStatus.value.runtime = (runtimeVal + 0.05).toFixed(1) + 'h'
-
-  const current = 10.5 + Math.random() * 6.5
-  deviceStatus.value.servoCurrent = current.toFixed(1) + 'A'
-
-  const baseSpeed = deviceStatus.value.status === 'stopped' ? 0 : 1800 + Math.random() * 3400
-  deviceStatus.value.spindleSpeed = Math.round(baseSpeed / 10) * 10 + 'RPM'
+async function loadData() {
+  try {
+    const res = await fetchDeviceStatus()
+    if (res.code === 0 && res.data) {
+      deviceStatus.value = res.data
+    }
+  } catch {
+    // 接口失败保持上次数据
+  }
 }
 
 onMounted(() => {
-  updateTimer = setInterval(updateData, 3000)
+  loadData()
+  updateTimer = setInterval(loadData, 3000)
 })
 
 onUnmounted(() => {

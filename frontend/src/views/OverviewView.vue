@@ -11,6 +11,7 @@ import {
   LegendComponent,
 } from 'echarts/components'
 import VChart from 'vue-echarts'
+import { fetchTrendData } from '../api/overview'
 import SubsystemStatusInner from './SubsystemStatusInner.vue'
 import DeviceStatusInner from './DeviceStatusInner.vue'
 
@@ -128,65 +129,6 @@ const motors = ref<Motor[]>([
   { id: 'W-003', name: 'W轴电机3', type: 'W', health: 94, status: 'running' },
   { id: 'W-004', name: 'W轴电机4', type: 'W', health: 92, status: 'running' },
   { id: 'C-001', name: 'C轴电机', type: 'C', health: 93, status: 'running' },
-])
-
-// --- 子系统状态数据 ---
-interface SubsystemMetrics {
-  label: string
-  value: string
-  unit: string
-}
-
-interface Subsystem {
-  name: string
-  status: 'normal' | 'warning' | 'fault' | 'running' | 'stopped'
-  healthScore?: number
-  metrics?: SubsystemMetrics[]
-}
-
-const subsystems = ref<Subsystem[]>([
-  {
-    name: '主轴系统',
-    status: 'normal',
-    healthScore: 92,
-    metrics: [
-      { label: '振动监测', value: '3.20', unit: 'mm/s' },
-      { label: '温度监测', value: '52.80', unit: '°C' },
-      { label: '电流监测', value: '45.60', unit: 'A' },
-      { label: '转速监测', value: '3200', unit: 'RPM' },
-    ],
-  },
-  {
-    name: '进给系统',
-    status: 'normal',
-    healthScore: 88,
-    metrics: [
-      { label: '伺服电流', value: '12.30', unit: 'A' },
-      { label: '跟随误差', value: '0.02', unit: 'mm' },
-      { label: '位置误差', value: '0.01', unit: 'mm' },
-      { label: '振动状态', value: '1.80', unit: 'mm/s' },
-    ],
-  },
-  {
-    name: '液压系统',
-    status: 'normal',
-    healthScore: 90,
-    metrics: [
-      { label: '系统压力', value: '16.50', unit: 'MPa' },
-      { label: '液压流量', value: '24.60', unit: 'L/min' },
-      { label: '响应速度', value: '0.12', unit: 's' },
-    ],
-  },
-  {
-    name: '润滑系统',
-    status: 'warning',
-    healthScore: 72,
-    metrics: [
-      { label: '润滑压力', value: '0.45', unit: 'MPa' },
-      { label: '供油流量', value: '2.80', unit: 'L/min' },
-      { label: '油液品质', value: '82', unit: '%' },
-    ],
-  },
 ])
 
 // --- 报警类型占比数据 ---
@@ -509,38 +451,21 @@ let healthTrendChartInst: echarts.ECharts | null = null
 let updateTimer: ReturnType<typeof setInterval> | undefined
 let resizeHandler: (() => void) | undefined
 
-function generateTrendData(points: number, hoursBack: number) {
-  const now = new Date()
-  const labels: string[] = []
-  const currentData: number[] = []
-  const vibrationData: number[] = []
-  const tempData: number[] = []
-  let currentVal = 12.3
-  let vibrationVal = 3.2
-  let tempVal = 52.8
-  for (let i = points - 1; i >= 0; i--) {
-    const t = new Date(now.getTime() - (i * hoursBack * 3600000) / points)
-    if (hoursBack <= 24) {
-      labels.push(`${t.getHours().toString().padStart(2, '0')}:${t.getMinutes().toString().padStart(2, '0')}`)
-    } else {
-      labels.push(`${(t.getMonth() + 1).toString().padStart(2, '0')}/${t.getDate().toString().padStart(2, '0')}`)
+async function loadTrendData(range: '24h' | '7d') {
+  try {
+    const res = await fetchTrendData(range)
+    if (res.code === 0 && res.data) {
+      trendTimeLabels.value = res.data.labels
+      servoCurrentTrend.value = res.data.servoCurrent
+      vibrationTrend.value = res.data.vibration
+      temperatureTrend.value = res.data.temperature
+      healthTrendChartInst?.setOption(
+        buildTrendOption(trendTimeLabels.value, servoCurrentTrend.value, vibrationTrend.value, temperatureTrend.value), true
+      )
     }
-    currentVal += (Math.random() - 0.48) * 0.6
-    currentVal = Math.max(8, Math.min(18, currentVal))
-    if (Math.random() < 0.03) currentVal += 2 + Math.random() * 3
-    currentData.push(+currentVal.toFixed(2))
-
-    vibrationVal += (Math.random() - 0.48) * 0.3
-    vibrationVal = Math.max(1, Math.min(5.5, vibrationVal))
-    if (Math.random() < 0.03) vibrationVal += 0.8 + Math.random() * 1.5
-    vibrationData.push(+vibrationVal.toFixed(2))
-
-    tempVal += (Math.random() - 0.48) * 1.2
-    tempVal = Math.max(42, Math.min(65, tempVal))
-    if (Math.random() < 0.03) tempVal += 3 + Math.random() * 5
-    tempData.push(+tempVal.toFixed(2))
+  } catch {
+    // keep last data on error
   }
-  return { labels, currentData, vibrationData, tempData }
 }
 
 function toggleParameter(param: 'servo' | 'temp' | 'vibration') {
@@ -554,16 +479,7 @@ function toggleParameter(param: 'servo' | 'temp' | 'vibration') {
 
 function switchTimeRange(range: '24h' | '7d') {
   trendTimeRange.value = range
-  const points = range === '24h' ? 288 : 168
-  const hours = range === '24h' ? 24 : 168
-  const result = generateTrendData(points, hours)
-  trendTimeLabels.value = result.labels
-  servoCurrentTrend.value = result.currentData
-  vibrationTrend.value = result.vibrationData
-  temperatureTrend.value = result.tempData
-  healthTrendChartInst?.setOption(
-    buildTrendOption(trendTimeLabels.value, servoCurrentTrend.value, vibrationTrend.value, temperatureTrend.value), true
-  )
+  loadTrendData(range)
 }
 
 function buildTrendOption(labels: string[], currentData: number[], vibrationData: number[], tempData: number[]) {
@@ -693,22 +609,7 @@ function initTrendChart() {
 }
 
 function updateTrendData() {
-  const now = new Date()
-  const timeStr = trendTimeRange.value === '24h'
-    ? `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
-    : `${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getDate().toString().padStart(2, '0')}`
-  trendTimeLabels.value = [...trendTimeLabels.value.slice(1), timeStr]
-
-  const newCurrent = +(12.3 + (Math.random() - 0.5) * 1.2).toFixed(2)
-  const newVibration = +(3.2 + (Math.random() - 0.5) * 0.6).toFixed(2)
-  const newTemp = +(52.8 + (Math.random() - 0.5) * 2.4).toFixed(2)
-  servoCurrentTrend.value = [...servoCurrentTrend.value.slice(1), newCurrent]
-  vibrationTrend.value = [...vibrationTrend.value.slice(1), newVibration]
-  temperatureTrend.value = [...temperatureTrend.value.slice(1), newTemp]
-
-  healthTrendChartInst?.setOption(
-    buildTrendOption(trendTimeLabels.value, servoCurrentTrend.value, vibrationTrend.value, temperatureTrend.value)
-  )
+  loadTrendData(trendTimeRange.value)
 }
 
 // --- 动态数据更新 ---
@@ -723,15 +624,11 @@ onMounted(async () => {
   timer = window.setInterval(updateData, 3000)
   
   // 初始化趋势数据
-  const trendResult = generateTrendData(288, 24)
-  trendTimeLabels.value = trendResult.labels
-  servoCurrentTrend.value = trendResult.currentData
-  vibrationTrend.value = trendResult.vibrationData
-  temperatureTrend.value = trendResult.tempData
-  
+  await loadTrendData('24h')
+
   await nextTick()
   initTrendChart()
-  
+
   updateTimer = setInterval(updateTrendData, 3000)
   resizeHandler = () => healthTrendChartInst?.resize()
   window.addEventListener('resize', resizeHandler)
@@ -876,7 +773,7 @@ const getLevelText = (level: string) => {
             <div class="border-body">
               <div class="side-line left"></div>
               <div class="content-area">
-                <SubsystemStatusInner :subsystem-data="subsystems" />
+                <SubsystemStatusInner />
               </div>
               <div class="side-line right"></div>
             </div>

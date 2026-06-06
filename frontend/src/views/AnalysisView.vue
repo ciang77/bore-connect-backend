@@ -551,30 +551,33 @@
                   <div class="motor-grid">
                     <div class="motor-item" v-for="(motor, index) in motorCurrents" :key="index"
                       :class="{ 'motor-alert': motor.current > motor.maxCurrent || motor.current < motor.minCurrent }">
-                      <div class="motor-number">{{ motor.id }}</div>
-                      <div class="motor-meter">
-                        <svg class="meter-svg" viewBox="0 0 100 64" preserveAspectRatio="xMidYMid meet">
-                          <path class="meter-arc-bg" d="M 12 52 A 38 38 0 0 1 88 52" pathLength="100"></path>
-                          <path
-                            class="meter-arc"
-                            :class="{ 'meter-arc-alert': motor.current > motor.maxCurrent || motor.current < motor.minCurrent }"
-                            d="M 12 52 A 38 38 0 0 1 88 52"
-                            pathLength="100"
-                            :stroke-dasharray="getMotorArcDash(motor)"
-                          ></path>
-                          <line
-                            class="meter-needle"
-                            :class="{ 'meter-needle-alert': motor.current > motor.maxCurrent || motor.current < motor.minCurrent }"
-                            x1="50" y1="52" x2="50" y2="18"
-                            :transform="getMotorNeedleTransform(motor)"
-                          ></line>
-                          <circle class="meter-hub" cx="50" cy="52" r="3.2"></circle>
-                        </svg>
+                      <div class="motor-header">
+                        <span class="motor-dot" :class="{ 'dot-alert': motor.current > motor.maxCurrent || motor.current < motor.minCurrent }"></span>
+                        <span class="motor-number">{{ motor.id }}</span>
+                        <span class="motor-status" :class="motor.current > motor.maxCurrent || motor.current < motor.minCurrent ? 'status-alert' : 'status-ok'">
+                          {{ motor.current > motor.maxCurrent || motor.current < motor.minCurrent ? '异常' : '正常' }}
+                        </span>
                       </div>
                       <div class="motor-value" :class="{ 'value-alert': motor.current > motor.maxCurrent || motor.current < motor.minCurrent }">
-                        {{ motor.current.toFixed(1) }}A
+                        {{ motor.current.toFixed(1) }}<small>A</small>
                       </div>
-                      <div class="motor-range">{{ motor.minCurrent }}-{{ motor.maxCurrent }}A</div>
+                      <div class="motor-bar-wrap">
+                        <div class="motor-bar-range">
+                          <span>{{ motor.minCurrent }}</span>
+                          <span>{{ motor.maxCurrent }}</span>
+                        </div>
+                        <div class="motor-bar">
+                          <div
+                            class="motor-bar-fill"
+                            :class="motor.current > motor.maxCurrent || motor.current < motor.minCurrent ? 'fill-alert' : 'fill-ok'"
+                            :style="{ width: getMotorBarPercent(motor) + '%' }"
+                          ></div>
+                          <div class="motor-bar-dot"
+                            :class="motor.current > motor.maxCurrent || motor.current < motor.minCurrent ? 'dot-alert' : ''"
+                            :style="{ left: getMotorBarPercent(motor) + '%' }"
+                          ></div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -594,6 +597,8 @@
 </template>
 
 <script>
+import { fetchMotorCurrents } from '../api/analysis'
+
 export default {
   name: 'AnalysisView',
   data() {
@@ -882,16 +887,14 @@ export default {
       const totalLabels = this.timeLabels.length
       return 8 + (index / (totalLabels - 1)) * 90
     },
-    initMotorCurrents() {
-      this.motorCurrents = []
-      for (let i = 1; i <= 15; i++) {
-        const baseCurrent = 5 + Math.random() * 10
-        this.motorCurrents.push({
-          id: `M${i.toString().padStart(2, '0')}`,
-          current: baseCurrent,
-          minCurrent: 3,
-          maxCurrent: 15
-        })
+    async initMotorCurrents() {
+      try {
+        const res = await fetchMotorCurrents()
+        if (res.code === 0 && res.data) {
+          this.motorCurrents = res.data
+        }
+      } catch {
+        // fallback to empty
       }
     },
     initDeviationData() {
@@ -911,7 +914,7 @@ export default {
         this.updateData()
       }, 2000)
     },
-    updateData() {
+    async updateData() {
       this.realtimeData.forEach(subsystem => {
         subsystem.params.forEach(param => {
           const variation = (Math.random() - 0.5) * 0.1 * param.max
@@ -928,10 +931,15 @@ export default {
       })
       this.syncDeviationData()
       this.updateSpindlePrediction()
-      this.motorCurrents.forEach(motor => {
-        const variation = (Math.random() - 0.5) * 0.5
-        motor.current = Math.max(motor.minCurrent - 1, Math.min(motor.maxCurrent + 3, motor.current + variation))
-      })
+
+      // 伺服电机电流从数据库轮换
+      try {
+        const res = await fetchMotorCurrents()
+        if (res.code === 0 && res.data) {
+          this.motorCurrents = res.data
+        }
+      } catch { /* keep last data */ }
+
       this.modelMAE = Math.max(0.1, this.modelMAE + (Math.random() - 0.5) * 0.1)
       this.modelMSE = Math.max(0.1, this.modelMSE + (Math.random() - 0.5) * 0.25)
       this.maeHistory.push(this.modelMAE)
@@ -1030,21 +1038,11 @@ export default {
       const quality = 1 - mse / 10
       return Math.max(0, Math.min(100, Math.round(quality * 100)))
     },
-    getMotorRatio(motor) {
+    getMotorBarPercent(motor) {
       const denom = motor.maxCurrent - motor.minCurrent
-      if (!denom) return 0
+      if (!denom) return 50
       const r = (motor.current - motor.minCurrent) / denom
-      return Math.max(0, Math.min(1, r))
-    },
-    getMotorArcDash(motor) {
-      const ratio = this.getMotorRatio(motor)
-      const active = +(ratio * 100).toFixed(2)
-      return `${active} 100`
-    },
-    getMotorNeedleTransform(motor) {
-      const ratio = this.getMotorRatio(motor)
-      const angle = -120 + ratio * 240
-      return `rotate(${angle} 50 52)`
+      return Math.max(0, Math.min(100, r * 100))
     },
     getTrendColor(index) {
       const mae = this.maeHistory[index] || 5
@@ -2457,116 +2455,176 @@ export default {
 
 .motor-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  grid-template-rows: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-  padding: 4px;
+  grid-template-columns: repeat(5, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 5px;
+  padding: 4px 6px;
   height: 100%;
 }
 
 .motor-item {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  padding: 6px 6px;
-  background: radial-gradient(circle at 30% 20%, rgba(56, 189, 248, 0.10), rgba(0, 100, 180, 0.06));
-  border: 1px solid rgba(0, 191, 255, 0.12);
-  border-radius: 8px;
+  gap: 2px;
+  padding: 5px 8px;
+  background: linear-gradient(135deg, rgba(10, 25, 50, 0.9), rgba(15, 30, 55, 0.8));
+  border: 1px solid rgba(0, 180, 255, 0.18);
+  border-radius: 6px;
   transition: all 0.3s ease;
   min-height: 0;
 }
 
+.motor-item:hover {
+  border-color: rgba(0, 200, 255, 0.45);
+  background: linear-gradient(135deg, rgba(10, 30, 60, 0.95), rgba(15, 35, 65, 0.85));
+}
+
 .motor-alert {
-  background: radial-gradient(circle at 30% 20%, rgba(255, 71, 87, 0.14), rgba(255, 71, 87, 0.06));
-  border-color: rgba(255, 71, 87, 0.25);
+  border-color: rgba(255, 80, 80, 0.35);
+  background: linear-gradient(135deg, rgba(40, 10, 15, 0.85), rgba(50, 15, 20, 0.75));
+}
+
+.motor-alert:hover {
+  border-color: rgba(255, 80, 80, 0.6);
+}
+
+.motor-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.motor-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #00d4ff;
+  box-shadow: 0 0 6px rgba(0, 212, 255, 0.5);
+  flex-shrink: 0;
+}
+
+.motor-dot.dot-alert {
+  background: #ff4757;
+  box-shadow: 0 0 8px rgba(255, 71, 87, 0.6);
+  animation: blink-dot 1s ease-in-out infinite;
 }
 
 .motor-number {
-  font-size: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #e2e8f0;
+  flex: 1;
+}
+
+.motor-status {
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 3px;
   font-weight: 600;
-  color: rgba(0, 191, 255, 0.8);
 }
 
-.motor-meter {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 0;
+.status-ok {
+  color: #00ff99;
+  background: rgba(0, 255, 153, 0.08);
+  border: 1px solid rgba(0, 255, 153, 0.2);
 }
 
-.meter-svg {
-  width: 72px;
-  height: 48px;
-  overflow: visible;
-}
-
-.meter-arc-bg {
-  fill: none;
-  stroke: rgba(255, 255, 255, 0.12);
-  stroke-width: 6.5;
-  stroke-linecap: round;
-}
-
-.meter-arc {
-  fill: none;
-  stroke: rgba(0, 212, 255, 0.85);
-  stroke-width: 6.5;
-  stroke-linecap: round;
-  filter: drop-shadow(0 0 6px rgba(0, 212, 255, 0.35));
-}
-
-.meter-arc-alert {
-  stroke: rgba(255, 71, 87, 0.9);
-  filter: drop-shadow(0 0 8px rgba(255, 71, 87, 0.4));
-}
-
-.meter-needle {
-  stroke: rgba(225, 245, 255, 0.9);
-  stroke-width: 2;
-  stroke-linecap: round;
-  filter: drop-shadow(0 0 6px rgba(225, 245, 255, 0.25));
-}
-
-.meter-needle-alert {
-  stroke: rgba(255, 71, 87, 0.95);
-  filter: drop-shadow(0 0 8px rgba(255, 71, 87, 0.35));
-}
-
-.meter-hub {
-  fill: rgba(15, 25, 50, 0.95);
-  stroke: rgba(0, 212, 255, 0.55);
-  stroke-width: 1.2;
+.status-alert {
+  color: #ff4757;
+  background: rgba(255, 71, 87, 0.1);
+  border: 1px solid rgba(255, 71, 87, 0.25);
 }
 
 .motor-value {
-  font-size: 9px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
-  font-family: monospace;
+  font-size: 22px;
+  font-weight: 800;
+  color: #00ffcc;
+  font-family: 'Consolas', monospace;
+  text-align: center;
+  line-height: 1;
+  text-shadow: 0 0 10px rgba(0, 255, 204, 0.3);
+}
+
+.motor-value small {
+  font-size: 12px;
+  font-weight: 400;
+  color: rgba(0, 255, 204, 0.5);
+  margin-left: 2px;
 }
 
 .value-alert {
-  color: #ff4444;
+  color: #ff6b6b;
+  text-shadow: 0 0 10px rgba(255, 107, 107, 0.4);
 }
 
-.motor-range {
-  font-size: 7px;
-  color: rgba(255, 255, 255, 0.4);
-  text-align: center;
+.value-alert small {
+  color: rgba(255, 107, 107, 0.5);
+}
+
+.motor-bar-wrap {
+  margin-top: auto;
+}
+
+.motor-bar-range {
+  display: flex;
+  justify-content: space-between;
+  font-size: 8px;
+  color: rgba(148, 163, 184, 0.5);
+  margin-bottom: 2px;
+  padding: 0 1px;
+}
+
+.motor-bar {
+  position: relative;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  overflow: visible;
+}
+
+.motor-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.5s ease;
+}
+
+.fill-ok {
+  background: linear-gradient(90deg, #00d4ff, #00ff88);
+  box-shadow: 0 0 6px rgba(0, 255, 136, 0.3);
+}
+
+.fill-alert {
+  background: linear-gradient(90deg, #ff6b6b, #ff4757);
+  box-shadow: 0 0 6px rgba(255, 71, 87, 0.4);
+}
+
+.motor-bar-dot {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 8px;
+  background: #fff;
+  border-radius: 50%;
+  border: 2px solid #00d4ff;
+  box-shadow: 0 0 6px rgba(0, 212, 255, 0.5);
+  transition: left 0.5s ease;
+}
+
+.motor-bar-dot.dot-alert {
+  border-color: #ff4757;
+  box-shadow: 0 0 6px rgba(255, 71, 87, 0.6);
+}
+
+@keyframes blink-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
 @media (max-width: 1400px) {
   .motor-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-template-rows: repeat(5, minmax(0, 1fr));
-  }
-
-  .meter-svg {
-    width: 68px;
-    height: 44px;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(5, 1fr);
   }
 }
 </style>

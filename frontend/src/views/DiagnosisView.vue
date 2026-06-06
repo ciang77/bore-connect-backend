@@ -180,6 +180,7 @@
 
 <script>
 import SystemArea from '@/components/SystemArea.vue'
+import { fetchDiagnosisStatus } from '../api/diagnosis'
 
 export default {
   name: 'DiagnosisView',
@@ -195,8 +196,7 @@ export default {
         { label: '额定电压', value: '380 V' },
         { label: '额定电流', value: '32 A' }
       ],
-      spindleStatus: this.generateStatus(['主轴运行', '定向完成', '换刀完成', '过载保护', '急停触发', '温度异常', '振动超限']),
-      
+      spindleStatus: [],
       lubricationRated: [
         { label: '额定压力', value: '0.4 MPa' },
         { label: '供油流量', value: '2.5 L/min' },
@@ -204,8 +204,7 @@ export default {
         { label: '过滤精度', value: '10 μm' },
         { label: '工作粘度', value: '46 cSt' }
       ],
-      lubricationStatus: this.generateStatus(['油泵运行', '压力正常', '油位正常', '温度正常', '过滤器堵塞', '油路泄漏', '压力低报警']),
-      
+      lubricationStatus: [],
       feedRated: [
         { label: 'X轴行程', value: '500 mm' },
         { label: 'Y轴行程', value: '400 mm' },
@@ -213,8 +212,7 @@ export default {
         { label: '快移速度', value: '12000 mm/min' },
         { label: '定位精度', value: '0.01 mm' }
       ],
-      feedStatus: this.generateStatus(['X轴原点', 'Y轴原点', 'Z轴原点', '伺服使能', '限位触发', '跟随误差', '定位完成']),
-      
+      feedStatus: [],
       hydraulicRated: [
         { label: '额定压力', value: '7.0 MPa' },
         { label: '泵流量', value: '40 L/min' },
@@ -222,15 +220,30 @@ export default {
         { label: '油箱容积', value: '100 L' },
         { label: '工作压力', value: '6.5 MPa' }
       ],
-      hydraulicStatus: this.generateStatus(['油泵运行', '卸荷状态', '蓄能器压力', '冷却器运行', '滤油器堵塞', '液位低报警', '压力正常'])
+      hydraulicStatus: [],
+      timer: null
     }
   },
+  mounted() {
+    this.loadStatus()
+    this.timer = setInterval(() => this.loadStatus(), 3000)
+  },
+  beforeUnmount() {
+    if (this.timer) clearInterval(this.timer)
+  },
   methods: {
-    generateStatus(labels) {
-      return labels.map(label => ({
-        label: label,
-        value: Math.random() > 0.2 ? 1 : 0
-      }))
+    async loadStatus() {
+      try {
+        const res = await fetchDiagnosisStatus()
+        if (res.code === 0 && res.data) {
+          for (const item of res.data) {
+            if (item.name === '主轴系统') this.spindleStatus = item.variables
+            else if (item.name === '润滑系统') this.lubricationStatus = item.variables
+            else if (item.name === '进给系统') this.feedStatus = item.variables
+            else if (item.name === '液压系统') this.hydraulicStatus = item.variables
+          }
+        }
+      } catch { /* keep last data */ }
     }
   }
 }
@@ -239,7 +252,7 @@ export default {
 <style scoped>
 .view {
   height: 100%;
-  overflow: hidden;
+  overflow: auto;
   display: flex;
   align-items: stretch;
 }
@@ -249,30 +262,33 @@ export default {
   width: 100%;
   height: 100%;
   gap: 0;
+  min-height: 0;
 }
 
 .side-panel {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 6px 0;
+  gap: 8px;
+  padding: 4px 0;
+  min-height: 0;
 }
 
 .left-panel {
-  padding-right: 10px;
+  padding-right: 8px;
 }
 
 .right-panel {
-  padding-left: 10px;
+  padding-left: 8px;
 }
 
 .center-bar {
-  width: 160px;
+  width: 130px;
   display: flex;
   flex-direction: column;
   align-items: center;
   position: relative;
+  flex-shrink: 0;
 }
 
 .center-connector {
@@ -306,7 +322,7 @@ export default {
   bottom: 0;
   left: 50%;
   transform: translateX(-50%);
-  width: 160px;
+  width: 130px;
 }
 
 .maze-svg {

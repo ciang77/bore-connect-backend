@@ -48,6 +48,11 @@
               <span class="info-value">数控主轴</span>
             </div>
           </div>
+          <div class="equipment-tags">
+            <span class="eq-tag">CNC</span>
+            <span class="eq-tag">数字孪生</span>
+            <span class="eq-tag">在线</span>
+          </div>
           <div class="equipment-image">
             <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
               <defs>
@@ -119,19 +124,33 @@
             </div>
             <div class="rated-content">
               <div class="rated-item" v-for="(item, index) in ratedParams" :key="index">
-                <span class="rated-label">{{ item.label }}</span>
-                <span class="rated-value">{{ item.value }}</span>
+                <div class="rated-left">
+                  <span class="rated-label">{{ item.label }}</span>
+                </div>
+                <div class="rated-right">
+                  <span class="rated-value">{{ item.value }}</span>
+                </div>
               </div>
             </div>
           </div>
         </div>
         <div class="content-right">
           <div class="status-section">
+            <div class="status-header">运行状态</div>
             <div class="status-content">
               <div class="status-item" v-for="(item, index) in statusVariables" :key="index">
-                <span class="status-label">{{ item.label }}</span>
-                <div class="status-indicator" :class="item.value === 1 ? 'active-green' : 'active-red'">
-                  <div class="indicator-inner"></div>
+                <div class="status-left">
+                  <span class="status-label">{{ item.label }}</span>
+                </div>
+                <div class="status-mid">
+                  <span class="status-text" :class="item.value === 1 ? 'text-ok' : 'text-warn'">
+                    {{ item.value === 1 ? '正常' : '异常' }}
+                  </span>
+                </div>
+                <div class="status-right">
+                  <div class="status-indicator" :class="item.value === 1 ? 'active-green' : 'active-red'">
+                    <div class="indicator-inner"></div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -166,7 +185,7 @@ export default {
       type: Array,
       default: () => []
     }
-  }
+  },
 }
 </script>
 
@@ -177,8 +196,8 @@ export default {
   flex-direction: column;
   background: linear-gradient(135deg, rgba(10, 20, 40, 0.8), rgba(15, 25, 50, 0.6));
   border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 
+  overflow: visible;
+  box-shadow:
     0 0 20px rgba(0, 191, 255, 0.2),
     inset 0 0 40px rgba(0, 191, 255, 0.03);
 }
@@ -347,7 +366,7 @@ export default {
   padding: 4px 6px;
   gap: 6px;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 .side-line {
@@ -383,11 +402,11 @@ export default {
 }
 
 .content-left {
-  flex: 0.6;
+  flex: 0.5;
   display: flex;
   flex-direction: column;
   background: transparent;
-  overflow: hidden;
+  overflow: visible;
   min-height: 0;
 }
 
@@ -410,15 +429,33 @@ export default {
 }
 
 .info-label {
-  font-size: 12px;
+  font-size: 11px;
   color: rgba(180, 210, 240, 0.7);
 }
 
 .info-value {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: #a8d8ff;
   text-shadow: 0 0 4px rgba(168, 216, 255, 0.4);
+}
+
+.equipment-tags {
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+  padding: 4px 0;
+  flex-shrink: 0;
+}
+
+.eq-tag {
+  font-size: 9px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 191, 255, 0.2);
+  color: rgba(135, 206, 235, 0.7);
+  background: rgba(0, 100, 180, 0.08);
+  letter-spacing: 0.5px;
 }
 
 .equipment-image {
@@ -439,10 +476,12 @@ export default {
 }
 
 .content-center {
-  flex: 1;
+  flex: 0.9;
   display: flex;
-  align-items: flex-start;
-  justify-content: center;
+  flex-direction: column;
+  justify-content: flex-start;
+  min-height: 0;
+  overflow: visible;
 }
 
 .rated-section {
@@ -453,8 +492,6 @@ export default {
   background: transparent;
   border-radius: 8px;
   border: 1px solid rgba(0, 191, 255, 0.15);
-  overflow: hidden;
-  transition: all 0.3s ease;
 }
 
 .rated-section:hover {
@@ -467,9 +504,9 @@ export default {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 4px 8px;
-  background: rgba(0, 100, 160, 0.12);
-  border-bottom: 1px solid rgba(0, 191, 255, 0.12);
+  padding: 5px 8px;
+  background: rgba(0, 100, 160, 0.1);
+  border-bottom: 1px solid rgba(0, 191, 255, 0.1);
   flex-shrink: 0;
 }
 
@@ -496,53 +533,62 @@ export default {
 .rated-title {
   font-size: 12px;
   font-weight: 600;
-  color: #87ceeb;
+  color: #a8d8ff;
   text-align: center;
-  letter-spacing: 2px;
-  text-shadow: 0 0 8px rgba(135, 206, 235, 0.5);
+  letter-spacing: 1px;
+  text-shadow: 0 0 6px rgba(168, 216, 255, 0.4);
 }
 
 .rated-content {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px;
-  overflow-y: auto;
 }
 
 .rated-item {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 1fr auto;
   align-items: center;
   padding: 6px 10px;
-  background: rgba(0, 100, 180, 0.08);
-  border-radius: 4px;
-  border: 1px solid rgba(0, 191, 255, 0.1);
-  transition: all 0.2s ease;
+  border-bottom: 1px solid rgba(0, 191, 255, 0.06);
+  flex: 1;
+  transition: background 0.2s;
+}
+
+.rated-item:last-child {
+  border-bottom: none;
 }
 
 .rated-item:hover {
   background: rgba(0, 100, 180, 0.15);
-  border-color: rgba(0, 191, 255, 0.25);
-  transform: translateX(2px);
+}
+
+.rated-left {
+  text-align: left;
 }
 
 .rated-label {
-  font-size: 11px;
-  color: rgba(180, 210, 240, 0.8);
-  letter-spacing: 0.5px;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(200, 225, 250, 0.9);
+  white-space: nowrap;
+}
+
+.rated-right {
+  text-align: right;
 }
 
 .rated-value {
   font-size: 12px;
   font-weight: 600;
   color: #a8d8ff;
-  text-shadow: 0 0 6px rgba(168, 216, 255, 0.4);
+  text-shadow: 0 0 4px rgba(168, 216, 255, 0.4);
+  white-space: nowrap;
 }
 
+/* ── 状态栏 ── */
 .content-right {
-  flex: 1;
+  flex: 1.1;
   display: flex;
   align-items: stretch;
   justify-content: center;
@@ -555,6 +601,21 @@ export default {
   display: flex;
   flex-direction: column;
   background: transparent;
+  border: 1px solid rgba(0, 191, 255, 0.1);
+  border-radius: 6px;
+}
+
+.status-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: #a8d8ff;
+  text-align: center;
+  padding: 5px 0;
+  background: rgba(0, 100, 160, 0.1);
+  border-bottom: 1px solid rgba(0, 191, 255, 0.1);
+  letter-spacing: 1px;
+  text-shadow: 0 0 6px rgba(168, 216, 255, 0.4);
+  flex-shrink: 0;
 }
 
 .status-content {
@@ -564,69 +625,109 @@ export default {
   gap: 0;
   padding: 0;
   min-height: 0;
+  overflow-y: auto;
 }
 
+
 .status-item {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
   padding: 6px 10px;
-  background: rgba(0, 100, 180, 0.08);
-  transition: all 0.2s ease;
-  flex-shrink: 0;
-  margin: 0;
+  border-bottom: 1px solid rgba(0, 191, 255, 0.06);
+  transition: background 0.2s;
+  flex: 1;
+}
+
+.status-item:last-child {
+  border-bottom: none;
 }
 
 .status-item:hover {
-  background: rgba(0, 100, 180, 0.18);
-  transform: translateX(2px);
+  background: rgba(0, 100, 180, 0.15);
+}
+
+.status-left {
+  text-align: left;
 }
 
 .status-label {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   color: rgba(200, 225, 250, 0.9);
-  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.status-mid {
+  text-align: center;
+}
+
+.status-text {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.text-ok {
+  color: #00ff99;
+  text-shadow: 0 0 6px rgba(0, 255, 153, 0.3);
+}
+
+.text-warn {
+  color: #ff6b6b;
+  text-shadow: 0 0 6px rgba(255, 107, 107, 0.3);
+}
+
+.status-right {
+  text-align: right;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
 }
 
 .status-indicator {
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.3s ease;
   flex-shrink: 0;
 }
 
 .indicator-inner {
-  width: 11px;
-  height: 11px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.indicator-inner {
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   transition: all 0.3s ease;
 }
 
 .active-green {
   background: rgba(0, 230, 118, 0.15);
-  border: 2px solid rgba(0, 230, 118, 0.4);
-  box-shadow: 0 0 10px rgba(0, 230, 118, 0.3);
+  border: 1.5px solid rgba(0, 230, 118, 0.4);
+  box-shadow: 0 0 8px rgba(0, 230, 118, 0.3);
 }
 
 .active-green .indicator-inner {
   background: radial-gradient(circle, #69f0ae 0%, #00e676 60%, #00c853 100%);
-  box-shadow: 0 0 12px rgba(0, 230, 118, 1);
+  box-shadow: 0 0 8px rgba(0, 230, 118, 0.8);
 }
 
 .active-red {
   background: rgba(255, 82, 82, 0.15);
-  border: 2px solid rgba(255, 82, 82, 0.4);
-  box-shadow: 0 0 10px rgba(255, 82, 82, 0.3);
+  border: 1.5px solid rgba(255, 82, 82, 0.4);
+  box-shadow: 0 0 8px rgba(255, 82, 82, 0.3);
 }
 
 .active-red .indicator-inner {
   background: radial-gradient(circle, #ff8a80 0%, #ff5252 60%, #d32f2f 100%);
-  box-shadow: 0 0 12px rgba(255, 82, 82, 1);
+  box-shadow: 0 0 8px rgba(255, 82, 82, 0.8);
 }
 
 /* 底部装饰栏 */

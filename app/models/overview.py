@@ -159,3 +159,22 @@ class TrendData(Base):
     temperature = Column(Float, default=0, comment="温度(°C)")
 
     __table_args__ = (Index("idx_record_time", "record_time"),)
+
+
+class MotorCurrent(Base):
+    __tablename__ = "motor_currents"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    motor_id = Column(String(8), nullable=False, comment="电机编号")
+    current = Column(Float, default=0, comment="电流值(A)")
+    min_current = Column(Float, default=3, comment="最小电流(A)")
+    max_current = Column(Float, default=15, comment="最大电流(A)")
+
+
+class SubsystemStatus(Base):
+    __tablename__ = "subsystem_status"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    subsystem_name = Column(String(32), nullable=False, comment="所属子系统")
+    label = Column(String(32), nullable=False, comment="状态名称")
+    value = Column(Integer, default=1, comment="0=异常(红) 1=正常(绿)")

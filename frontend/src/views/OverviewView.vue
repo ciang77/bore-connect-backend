@@ -44,13 +44,42 @@ const loadAlarms = async () => {
   } catch (e) { /* ignore */ }
 }
 
-const isAlertEnabled = ref(false)
+const ALERT_STATUS_CACHE_KEY = 'overview-alert-enabled'
+
+function readCachedAlertEnabled(): boolean {
+  try {
+    const cached = window.localStorage.getItem(ALERT_STATUS_CACHE_KEY)
+    if (cached === '1') return true
+    if (cached === '0') return false
+  } catch (e) {
+    console.warn('读取实时报警缓存失败:', e)
+  }
+  return false
+}
+
+function writeCachedAlertEnabled(enabled: boolean) {
+  try {
+    window.localStorage.setItem(ALERT_STATUS_CACHE_KEY, enabled ? '1' : '0')
+  } catch (e) {
+    console.warn('写入实时报警缓存失败:', e)
+  }
+}
+
+const isAlertEnabled = ref<boolean>(readCachedAlertEnabled())
+const isAlertStatusLoading = ref(true)
 
 const toggleAlertSwitch = async () => {
+  if (isAlertStatusLoading.value) return
+  // 开启时需要确认，防止误触
+  if (!isAlertEnabled.value) {
+    const ok = window.confirm('确定要开启实时报警吗？\n\n开启后将向邮箱发送告警通知。')
+    if (!ok) return
+  }
   try {
     const res = await toggleAlert(!isAlertEnabled.value)
     if (res.code === 200) {
       isAlertEnabled.value = res.data.enabled
+      writeCachedAlertEnabled(res.data.enabled)
       console.log(res.msg)
     }
   } catch (e) {
@@ -617,8 +646,15 @@ onMounted(async () => {
   // 初始化实时报警开关状态
   try {
     const res = await fetchAlertStatus()
-    if (res.code === 200) isAlertEnabled.value = res.data.enabled
-  } catch (e) { /* ignore */ }
+    if (res.code === 200) {
+      isAlertEnabled.value = res.data.enabled
+      writeCachedAlertEnabled(res.data.enabled)
+    }
+  } catch (e) {
+    console.error('获取实时报警开关状态失败，继续使用本地缓存状态:', e)
+  } finally {
+    isAlertStatusLoading.value = false
+  }
 
   // 初始化告警列表
   loadAlarms()
@@ -1050,7 +1086,7 @@ const getLevelText = (level: string) => {
                   </div>
                 </div>
                 <div class="alarm-actions-fixed">
-                  <div class="log-switch-enhanced" :class="{ active: isAlertEnabled }" @click="toggleAlertSwitch">
+                  <div class="log-switch-enhanced" :class="{ active: isAlertEnabled === true }" @click="toggleAlertSwitch">
                     <div class="switch-track-enhanced">
                       <div class="switch-thumb-enhanced"></div>
                     </div>

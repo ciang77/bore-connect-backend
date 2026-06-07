@@ -26,7 +26,8 @@ app = FastAPI(title="Bore Connect", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:8000", "http://127.0.0.1:8000", "http://127.0.0.1:9090", "http://localhost:9090"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", 
+    "http://localhost:8000", "http://127.0.0.1:8000", "http://127.0.0.1:9090", "http://localhost:9090"],
     allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type", "Authorization"],
@@ -70,4 +71,12 @@ if os.path.isdir(static_dir):
 
 
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=settings.DEBUG, workers=4)
+    run_kwargs = {
+        "app": "app.main:app",
+        "host": "127.0.0.1",
+        "port": 8000,
+        "reload": settings.DEBUG,
+    }
+    if not settings.DEBUG:
+        run_kwargs["workers"] = 4
+    uvicorn.run(**run_kwargs)

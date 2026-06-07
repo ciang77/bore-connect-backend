@@ -33,6 +33,13 @@ class Settings:
     DB_NAME: str = os.getenv("DB_NAME", "bore_connect")
     DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "10"))
 
+    # SMTP
+    SMTP_SERVER: str = os.getenv("SMTP_SERVER", "smtp.qq.com")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "465"))
+    SMTP_USER: str = os.getenv("SMTP_USER", "")
+    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+    ALERT_EMAIL_TO: str = os.getenv("ALERT_EMAIL_TO", "")
+
     @property
     def database_url(self) -> str:
         return (

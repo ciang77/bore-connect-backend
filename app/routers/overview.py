@@ -6,7 +6,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
-from app.models.overview import Device, DeviceRealtime, Subsystem, SubsystemRealtime, TrendData
+from app.models.overview import Alarm, Device, DeviceRealtime, Subsystem, SubsystemRealtime, TrendData
 
 router = APIRouter(prefix="/api/overview", tags=["Overview"])
 
@@ -202,3 +202,25 @@ def get_trend_data(
             "temperature": temperature,
         },
     }
+
+
+@router.get("/alarms")
+def get_alarms(db: Session = Depends(get_db)):
+    """获取最近告警列表（最多 50 条，按时间倒序）"""
+    rows = (
+        db.query(Alarm)
+        .order_by(Alarm.alarm_time.desc())
+        .limit(50)
+        .all()
+    )
+    data = [
+        {
+            "id": r.id,
+            "time": r.alarm_time.strftime("%H:%M:%S"),
+            "level": r.level,
+            "subsystem": r.subsystem,
+            "msg": r.msg,
+        }
+        for r in rows
+    ]
+    return {"code": 0, "data": data}

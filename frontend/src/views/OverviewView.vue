@@ -11,7 +11,7 @@ import {
   LegendComponent,
 } from 'echarts/components'
 import VChart from 'vue-echarts'
-import { fetchTrendData } from '../api/overview'
+import { fetchTrendData, fetchAlertStatus, toggleAlert, fetchAlarms } from '../api/overview'
 import SubsystemStatusInner from './SubsystemStatusInner.vue'
 import DeviceStatusInner from './DeviceStatusInner.vue'
 
@@ -35,37 +35,27 @@ interface Alarm {
   msg: string
 }
 
-const alarms = ref<Alarm[]>([
-  { id: 1, time: '15:46:48', level: 'warning', subsystem: '主轴系统', msg: '主轴轴承温度上升过快' },
-  { id: 2, time: '15:45:32', level: 'info', subsystem: '液压系统', msg: '液压压力恢复正常' },
-  { id: 3, time: '15:44:15', level: 'error', subsystem: '冷却系统', msg: '冷却液流量不足' },
-  { id: 4, time: '15:43:20', level: 'warning', subsystem: '导轨系统', msg: '导轨润滑压力偏低' },
-  { id: 5, time: '15:42:10', level: 'info', subsystem: '进给系统', msg: 'X轴进给速度调整完成' },
-  { id: 6, time: '15:41:35', level: 'error', subsystem: '主轴系统', msg: '主轴振动值超过阈值' },
-  { id: 7, time: '15:40:22', level: 'warning', subsystem: '液压系统', msg: '液压油温偏高预警' },
-  { id: 8, time: '15:39:18', level: 'info', subsystem: '润滑系统', msg: '润滑油更换提醒' },
-  { id: 9, time: '15:38:45', level: 'warning', subsystem: '冷却系统', msg: '冷却水流量下降' },
-  { id: 10, time: '15:37:55', level: 'error', subsystem: '进给系统', msg: 'Y轴伺服驱动器报警' },
-  { id: 11, time: '15:36:30', level: 'info', subsystem: '导轨系统', msg: '导轨润滑周期已到' },
-  { id: 12, time: '15:35:20', level: 'warning', subsystem: '主轴系统', msg: '主轴冷却泵压力偏低' },
-  { id: 13, time: '15:34:10', level: 'info', subsystem: '液压系统', msg: '液压过滤器更换提示' },
-  { id: 14, time: '15:33:40', level: 'error', subsystem: '冷却系统', msg: '冷却风扇故障' },
-  { id: 15, time: '15:32:15', level: 'warning', subsystem: '进给系统', msg: 'Z轴滚珠丝杠磨损预警' },
-])
+const alarms = ref<Alarm[]>([])
 
-const isLoggingEnabled = ref(false)
+const loadAlarms = async () => {
+  try {
+    const res = await fetchAlarms()
+    if (res.code === 0) alarms.value = res.data
+  } catch (e) { /* ignore */ }
+}
 
-const exportLogs = () => {
-  const logContent = alarms.value
-    .map((a) => `[${a.time}] [${a.level.toUpperCase()}] [${a.subsystem}] ${a.msg}`)
-    .join('\n')
-  const blob = new Blob([logContent], { type: 'text/plain' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `overview_logs_${new Date().toISOString().slice(0, 10)}.txt`
-  link.click()
-  URL.revokeObjectURL(url)
+const isAlertEnabled = ref(false)
+
+const toggleAlertSwitch = async () => {
+  try {
+    const res = await toggleAlert(!isAlertEnabled.value)
+    if (res.code === 200) {
+      isAlertEnabled.value = res.data.enabled
+      console.log(res.msg)
+    }
+  } catch (e) {
+    console.error('切换实时报警失败:', e)
+  }
 }
 
 // --- 运行数据（日、月、年）---
@@ -618,11 +608,21 @@ let timer: number | null = null
 const updateData = () => {
   runtimeData.value.daily.runtime = Number((18.5 + Math.random() * 0.5 - 0.25).toFixed(1))
   runtimeData.value.daily.normalRate = Number((99.2 + Math.random() * 0.2 - 0.1).toFixed(1))
+  loadAlarms()
 }
 
 onMounted(async () => {
   timer = window.setInterval(updateData, 3000)
-  
+
+  // 初始化实时报警开关状态
+  try {
+    const res = await fetchAlertStatus()
+    if (res.code === 200) isAlertEnabled.value = res.data.enabled
+  } catch (e) { /* ignore */ }
+
+  // 初始化告警列表
+  loadAlarms()
+
   // 初始化趋势数据
   await loadTrendData('24h')
 
@@ -1050,20 +1050,12 @@ const getLevelText = (level: string) => {
                   </div>
                 </div>
                 <div class="alarm-actions-fixed">
-                  <div class="log-switch-enhanced" :class="{ active: isLoggingEnabled }" @click="isLoggingEnabled = !isLoggingEnabled">
+                  <div class="log-switch-enhanced" :class="{ active: isAlertEnabled }" @click="toggleAlertSwitch">
                     <div class="switch-track-enhanced">
                       <div class="switch-thumb-enhanced"></div>
                     </div>
-                    <span class="switch-label">日志保存</span>
+                    <span class="switch-label">实时报警</span>
                   </div>
-                  <button class="export-btn-enhanced" @click="exportLogs">
-                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                      <polyline points="7 10 12 15 17 10"></polyline>
-                      <line x1="12" y1="15" x2="12" y2="3"></line>
-                    </svg>
-                    <span>导出日志</span>
-                  </button>
                 </div>
               </div>
               <div class="side-line right"></div>

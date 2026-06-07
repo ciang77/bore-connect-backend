@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 from datetime import datetime
 
 import uvicorn
@@ -14,16 +15,18 @@ from app.routers.alert import router as alert_router
 from app.config.settings import settings
 from app.services.alert import start_alert_monitor
 
-app = FastAPI(title="Bore Connect", version="1.0.0")
 
-
-@app.on_event("startup")
-def on_startup():
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
     start_alert_monitor(interval=30)
+    yield
+
+
+app = FastAPI(title="Bore Connect", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:8000", "http://127.0.0.1:8000"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:8000", "http://127.0.0.1:8000", "http://127.0.0.1:9090", "http://localhost:9090"],
     allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type", "Authorization"],
@@ -67,4 +70,4 @@ if os.path.isdir(static_dir):
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000, reload=settings.DEBUG)
+    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=settings.DEBUG, workers=4)

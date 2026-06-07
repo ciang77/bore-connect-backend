@@ -5,10 +5,12 @@ from app.config.settings import settings
 
 engine = create_engine(
     settings.database_url,
-    pool_size=settings.DB_POOL_SIZE,
+    pool_size=settings.DB_POOL_SIZE,      # 20
+    max_overflow=20,                       # 新增：峰值额外 20 个连接
     pool_recycle=3600,
     pool_pre_ping=True,
 )
+
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

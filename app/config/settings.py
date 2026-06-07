@@ -31,7 +31,7 @@ class Settings:
     DB_USER: str = os.getenv("DB_USER", "root")
     DB_PASSWORD: str = os.getenv("DB_PASSWORD", "123456")
     DB_NAME: str = os.getenv("DB_NAME", "bore_connect")
-    DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "10"))
+    DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "20"))
 
     # SMTP
     SMTP_SERVER: str = os.getenv("SMTP_SERVER", "smtp.qq.com")

@@ -146,7 +146,7 @@ _WEEKDAY_CN = ["周一", "周二", "周三", "周四", "周五", "周六", "周�
 
 @router.get("/trend-data")
 def get_trend_data(
-    range: str = Query("24h", regex="^(24h|7d)$"),
+    range: str = Query("24h", pattern="^(24h|7d)$"),
     db: Session = Depends(get_db),
 ):
     now = datetime.now()

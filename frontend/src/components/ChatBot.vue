@@ -345,7 +345,7 @@ onUnmounted(() => {
                 </option>
               </select>
             </div>
-            <button class="btn-close" @click="open = false" title="关闭 (Esc)">&times;</button>
+            <button class="btn-close" @pointerdown.stop @click="open = false" title="关闭 (Esc)">&times;</button>
           </div>
         </div>
 

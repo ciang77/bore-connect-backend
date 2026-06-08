@@ -14,11 +14,13 @@ from app.routers.diagnosis import router as diagnosis_router
 from app.routers.alert import router as alert_router
 from app.config.settings import settings
 from app.services.alert import start_alert_monitor
+from app.services.trend_simulator import start_trend_simulator
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     start_alert_monitor(interval=30)
+    start_trend_simulator(interval=30)
     yield
 
 

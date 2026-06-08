@@ -57,6 +57,15 @@ export function fetchAlarms(): Promise<{ code: number; data: AlarmItem[] }> {
   return api.get('/api/overview/alarms').then((res) => res.data)
 }
 
+// ── 日志导出 ──
+export function downloadAlarmLog() {
+  // 直接用 a 标签下载，避免 axios 解析 CSV
+  const a = document.createElement('a')
+  a.href = '/api/overview/alarms/export'
+  a.download = ''
+  a.click()
+}
+
 // ── 实时报警开关 ──
 export function fetchAlertStatus(): Promise<{ code: number; data: { enabled: boolean } }> {
   return api.get('/api/alert/status').then((res) => res.data)

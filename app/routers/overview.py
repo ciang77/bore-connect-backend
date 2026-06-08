@@ -224,3 +224,41 @@ def get_alarms(db: Session = Depends(get_db)):
         for r in rows
     ]
     return {"code": 0, "data": data}
+
+
+@router.get("/alarms/export")
+def export_alarms(db: Session = Depends(get_db)):
+    """导出告警日志为 CSV"""
+    import csv
+    import io
+
+    from fastapi.responses import StreamingResponse
+
+    rows = (
+        db.query(Alarm)
+        .order_by(Alarm.id.asc())
+        .limit(5000)
+        .all()
+    )
+
+    output = io.StringIO()
+    output.write("﻿")  # BOM for Excel 中文兼容
+    writer = csv.writer(output)
+    writer.writerow(["ID", "时间", "级别", "子系统", "消息"])
+    for r in rows:
+        writer.writerow([
+            r.id,
+            r.alarm_time.strftime("%Y-%m-%d %H:%M:%S") if r.alarm_time else "",
+            r.level or "",
+            r.subsystem or "",
+            r.msg or "",
+        ])
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv; charset=utf-8-sig",
+        headers={
+            "Content-Disposition": f"attachment; filename=alarm_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        },
+    )

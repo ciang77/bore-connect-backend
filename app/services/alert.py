@@ -3,6 +3,8 @@ import smtplib
 import threading
 import time
 import hashlib
+import json
+import urllib.request
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -161,6 +163,44 @@ def send_alert_email(subject: str, body: str) -> bool:
 
 
 # ═══════════════════════════════════════════════════════════════
+#  企业微信群机器人推送
+# ═══════════════════════════════════════════════════════════════
+
+def send_wecom_markdown(content: str) -> bool:
+    """通过企业微信群机器人发送 markdown 消息"""
+    webhook_url = settings.WECOM_WEBHOOK_URL
+    if not webhook_url:
+        logger.warning("企业微信 Webhook 未配置，跳过推送")
+        return False
+
+    payload = {
+        "msgtype": "markdown",
+        "markdown": {
+            "content": content
+        }
+    }
+
+    try:
+        req = urllib.request.Request(
+            webhook_url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+            if result.get("errcode") == 0:
+                logger.info("企业微信推送成功")
+                return True
+            else:
+                logger.error("企业微信推送失败: %s", result)
+                return False
+    except Exception as e:
+        logger.error("企业微信推送异常: %s", e)
+        return False
+
+
+# ═══════════════════════════════════════════════════════════════
 #  去重（基于 DB，跨 worker 共享）
 # ═══════════════════════════════════════════════════════════════
 
@@ -269,6 +309,19 @@ def check_and_alert():
             </div>
             """
             send_alert_email("[Bore Connect] Error 级别告警汇总", body)
+
+            # ── 企业微信推送（markdown 格式） ──
+            wecom_lines = [
+                f"## ⚠️ Bore Connect 严重告警\n",
+                f"> 本轮扫描检测到 **{summary}**，请及时处理\n",
+            ]
+            for alarm in new_errors:
+                wecom_lines.append(
+                    f"- **{alarm.subsystem}** | {alarm.msg}\n"
+                    f"  故障时间: {alarm.alarm_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                )
+            wecom_lines.append(f"\n> 同内容 5 分钟内不会重复发送")
+            send_wecom_markdown("".join(wecom_lines))
 
         # ── 更新检查时间 ──
         _db_set("last_check_time", _format_dt(now))

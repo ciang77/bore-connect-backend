@@ -326,26 +326,24 @@ onUnmounted(() => {
         :style="{ width: chatSize.w + 'px', height: chatSize.h + 'px' }"
         @click.stop
       >
-        <!-- Header (drag handle) -->
-        <div class="chat-header" @pointerdown.prevent="onDragStart">
-          <div class="chat-title-wrap">
+        <!-- Header -->
+        <div class="chat-header">
+          <div
+            class="chat-title-wrap"
+            @pointerdown.prevent="onDragStart"
+          >
             <span class="chat-title">AI 助手</span>
           </div>
           <div class="header-actions">
             <div class="model-select-wrap">
               <span class="model-label">MODEL</span>
-              <select
-                v-model="model"
-                class="model-select"
-                @mousedown.stop
-                @touchstart.stop
-              >
+              <select v-model="model" class="model-select">
                 <option v-for="m in models" :key="m.value" :value="m.value">
                   {{ m.label }}
                 </option>
               </select>
             </div>
-            <button class="btn-close" @pointerdown.stop @click="open = false" title="关闭 (Esc)">&times;</button>
+            <button class="btn-close" @click="open = false" title="关闭 (Esc)">&times;</button>
           </div>
         </div>
 
@@ -492,17 +490,19 @@ onUnmounted(() => {
   padding: 14px 16px;
   background: linear-gradient(135deg, #4a90d9 0%, #357abd 100%);
   color: #fff;
-  cursor: grab;
   user-select: none;
   flex-shrink: 0;
-  touch-action: none;
-}
-.chat-header:active {
-  cursor: grabbing;
 }
 .chat-title-wrap {
   display: flex;
   align-items: center;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  padding: 4px 0;
+}
+.chat-title-wrap:active {
+  cursor: grabbing;
 }
 .chat-title {
   font-weight: 700;
@@ -535,7 +535,9 @@ onUnmounted(() => {
   font-size: 12px;
   cursor: pointer;
   outline: none;
-  appearance: none;
+  appearance: auto;
+  touch-action: auto;
+  user-select: auto;
 }
 .model-select option {
   color: #333;

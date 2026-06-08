@@ -40,6 +40,9 @@ class Settings:
     SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
     ALERT_EMAIL_TO: str = os.getenv("ALERT_EMAIL_TO", "")
 
+    # 企业微信群机器人 Webhook
+    WECOM_WEBHOOK_URL: str = os.getenv("WECOM_WEBHOOK_URL", "")
+
     @property
     def database_url(self) -> str:
         return (

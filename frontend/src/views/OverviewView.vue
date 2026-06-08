@@ -11,7 +11,7 @@ import {
   LegendComponent,
 } from 'echarts/components'
 import VChart from 'vue-echarts'
-import { fetchTrendData, fetchAlertStatus, toggleAlert, fetchAlarms } from '../api/overview'
+import { fetchTrendData, fetchAlertStatus, toggleAlert, fetchAlarms, downloadAlarmLog } from '../api/overview'
 import SubsystemStatusInner from './SubsystemStatusInner.vue'
 import DeviceStatusInner from './DeviceStatusInner.vue'
 
@@ -85,6 +85,10 @@ const toggleAlertSwitch = async () => {
   } catch (e) {
     console.error('切换实时报警失败:', e)
   }
+}
+
+const handleExportLog = () => {
+  downloadAlarmLog()
 }
 
 // --- 运行数据（日、月、年）---
@@ -1092,6 +1096,14 @@ const getLevelText = (level: string) => {
                     </div>
                     <span class="switch-label">实时报警</span>
                   </div>
+                  <button class="export-btn-enhanced" @click="handleExportLog" title="导出日志CSV">
+                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="7 10 12 15 17 10"/>
+                      <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    <span>导出日志</span>
+                  </button>
                 </div>
               </div>
               <div class="side-line right"></div>

@@ -1,5 +1,6 @@
-import { ref, onMounted, onUnmounted, type Ref } from 'vue'
+import { ref, onMounted, type Ref } from 'vue'
 import { fetchSubsystems, type SubsystemInfo } from '../api/overview'
+import { useEventSource } from './useEventSource'
 
 export function useSubsystemData(): {
   subsystems: Ref<SubsystemInfo[]>
@@ -7,7 +8,6 @@ export function useSubsystemData(): {
 } {
   const subsystems = ref<SubsystemInfo[]>([])
   const loading = ref(true)
-  let timer: ReturnType<typeof setInterval> | undefined
 
   async function load() {
     try {
@@ -20,13 +20,17 @@ export function useSubsystemData(): {
     }
   }
 
-  onMounted(async () => {
-    await load()
-    timer = setInterval(load, 3000)
-  })
+  // SSE 必须在 setup 同步阶段注册，不能放在 onMounted 的 await 之后
+  useEventSource<SubsystemInfo[]>(
+    '/api/overview/subsystems/stream',
+    (data) => {
+      subsystems.value = data
+    },
+  )
 
-  onUnmounted(() => {
-    if (timer) clearInterval(timer)
+  onMounted(async () => {
+    // 首次加载走 REST 快速获取
+    await load()
   })
 
   return { subsystems, loading }

@@ -12,6 +12,7 @@ import {
 } from 'echarts/components'
 import VChart from 'vue-echarts'
 import { fetchTrendData, fetchAlertStatus, toggleAlert, fetchAlarms, downloadAlarmLog } from '../api/overview'
+import { useEventSource } from '../composables/useEventSource'
 import SubsystemStatusInner from './SubsystemStatusInner.vue'
 import DeviceStatusInner from './DeviceStatusInner.vue'
 
@@ -471,7 +472,6 @@ const showVibration = ref(true)
 
 const trendChartRef = ref<HTMLDivElement>()
 let healthTrendChartInst: echarts.ECharts | null = null
-let updateTimer: ReturnType<typeof setInterval> | undefined
 let resizeHandler: (() => void) | undefined
 
 async function loadTrendData(range: '24h' | '7d') {
@@ -500,8 +500,11 @@ function toggleParameter(param: 'servo' | 'temp' | 'vibration') {
   )
 }
 
+const trendStreamUrl = computed(() => `/api/overview/trend-data/stream?range=${trendTimeRange.value}`)
+
 function switchTimeRange(range: '24h' | '7d') {
   trendTimeRange.value = range
+  // 首屏快速加载走 REST，SSE 通过 computed URL 自动重连
   loadTrendData(range)
 }
 
@@ -631,20 +634,34 @@ function initTrendChart() {
   }
 }
 
-function updateTrendData() {
-  loadTrendData(trendTimeRange.value)
-}
-
 // --- 动态数据更新 ---
 let timer: number | null = null
 
 const updateData = () => {
   runtimeData.value.daily.runtime = Number((18.5 + Math.random() * 0.5 - 0.25).toFixed(1))
   runtimeData.value.daily.normalRate = Number((99.2 + Math.random() * 0.2 - 0.1).toFixed(1))
-  loadAlarms()
 }
 
+// SSE 实时推送 — 必须在 setup 同步阶段注册，不能放在 onMounted 的 await 之后
+useEventSource('/api/overview/alarms/stream', (data: Alarm[]) => {
+  alarms.value = data
+})
+
+useEventSource(trendStreamUrl, (data: { labels: string[]; servoCurrent: number[]; vibration: number[]; temperature: number[] }) => {
+  trendTimeLabels.value = data.labels
+  servoCurrentTrend.value = data.servoCurrent
+  vibrationTrend.value = data.vibration
+  temperatureTrend.value = data.temperature
+  // 防止 SSE 回调时 ECharts 实例已被销毁
+  if (healthTrendChartInst && !healthTrendChartInst.isDisposed()) {
+    healthTrendChartInst.setOption(
+      buildTrendOption(data.labels, data.servoCurrent, data.vibration, data.temperature), true
+    )
+  }
+})
+
 onMounted(async () => {
+  // 运行动画（无 API 调用，纯前端模拟）
   timer = window.setInterval(updateData, 3000)
 
   // 初始化实时报警开关状态
@@ -660,23 +677,21 @@ onMounted(async () => {
     isAlertStatusLoading.value = false
   }
 
-  // 初始化告警列表
+  // 初始化告警列表（REST 首屏快速加载）
   loadAlarms()
 
-  // 初始化趋势数据
+  // 初始化趋势数据（REST 首屏快速加载）
   await loadTrendData('24h')
 
   await nextTick()
   initTrendChart()
 
-  updateTimer = setInterval(updateTrendData, 3000)
   resizeHandler = () => healthTrendChartInst?.resize()
   window.addEventListener('resize', resizeHandler)
 })
 
 onUnmounted(() => {
   if (timer) clearInterval(timer)
-  if (updateTimer) clearInterval(updateTimer)
   if (resizeHandler) window.removeEventListener('resize', resizeHandler)
   healthTrendChartInst?.dispose()
 })

@@ -729,10 +729,23 @@ export default {
     this.initMotorCurrents()
     this.initDeviationData()
     this.startDataUpdate()
+
+    // SSE 实时推送替代电机电流轮询
+    this._motorEs = new EventSource('/api/analysis/motor-currents/stream')
+    this._motorEs.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        this.motorCurrents = data
+      } catch { /* ignore malformed data */ }
+    }
   },
   beforeUnmount() {
     if (this.updateTimer) {
       clearInterval(this.updateTimer)
+    }
+    if (this._motorEs) {
+      this._motorEs.close()
+      this._motorEs = null
     }
   },
   computed: {
@@ -931,14 +944,6 @@ export default {
       })
       this.syncDeviationData()
       this.updateSpindlePrediction()
-
-      // 伺服电机电流从数据库轮换
-      try {
-        const res = await fetchMotorCurrents()
-        if (res.code === 0 && res.data) {
-          this.motorCurrents = res.data
-        }
-      } catch { /* keep last data */ }
 
       this.modelMAE = Math.max(0.1, this.modelMAE + (Math.random() - 0.5) * 0.1)
       this.modelMSE = Math.max(0.1, this.modelMSE + (Math.random() - 0.5) * 0.25)

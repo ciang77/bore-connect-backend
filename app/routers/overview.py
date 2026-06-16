@@ -1,11 +1,15 @@
+import asyncio
+import hashlib
+import json
 import random
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.database.connection import get_db
+from app.database.connection import SessionLocal, get_db
 from app.models.overview import Alarm, Device, DeviceRealtime, Subsystem, SubsystemRealtime, TrendData
 
 router = APIRouter(prefix="/api/overview", tags=["Overview"])
@@ -262,3 +266,272 @@ def export_alarms(db: Session = Depends(get_db)):
             "Content-Disposition": f"attachment; filename=alarm_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         },
     )
+
+
+# ═══════════════════════════════════════════════════════════════
+#  SSE 实时推送端点
+# ═══════════════════════════════════════════════════════════════
+
+def _sse_response(generator):
+    """SSE StreamingResponse 工厂"""
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+def _fingerprint(data: dict) -> str:
+    return hashlib.md5(json.dumps(data, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+@router.get("/alarms/stream")
+async def alarm_stream():
+    """SSE: 告警实时推送"""
+
+    async def event_generator():
+        seen = None
+        while True:
+            db = SessionLocal()
+            try:
+                rows = (
+                    db.query(Alarm)
+                    .order_by(Alarm.alarm_time.desc())
+                    .limit(50)
+                    .all()
+                )
+                data = [
+                    {
+                        "id": r.id,
+                        "time": r.alarm_time.strftime("%H:%M:%S"),
+                        "level": r.level,
+                        "subsystem": r.subsystem,
+                        "msg": r.msg,
+                    }
+                    for r in rows
+                ]
+                fp = _fingerprint({"data": data})
+                if fp != seen:
+                    yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+                    seen = fp
+            finally:
+                db.close()
+            await asyncio.sleep(2)
+
+    return _sse_response(event_generator())
+
+
+@router.get("/device-status/stream")
+async def device_status_stream():
+    """SSE: 设备状态实时推送"""
+
+    async def event_generator():
+        seen = None
+        while True:
+            db = SessionLocal()
+            try:
+                device = db.query(Device).first()
+                if not device:
+                    await asyncio.sleep(2)
+                    continue
+
+                realtime = _pick_realtime(db)
+
+                latest_bucket = (
+                    db.query(
+                        func.avg(TrendData.servo_current).label("servo_current"),
+                        func.avg(TrendData.vibration).label("vibration"),
+                        func.avg(TrendData.temperature).label("temperature"),
+                    )
+                    .filter(TrendData.record_time >= datetime.now() - timedelta(hours=24))
+                    .group_by(
+                        func.date_format(TrendData.record_time, "%Y%m%d%H"),
+                        func.floor(func.minute(TrendData.record_time) / 5),
+                    )
+                    .order_by(func.min(TrendData.record_time).desc())
+                    .first()
+                )
+
+                if latest_bucket and latest_bucket.temperature is not None:
+                    temperature = f"{latest_bucket.temperature:.0f}°C"
+                    vibration = f"{latest_bucket.vibration:.1f}mm/s"
+                    servo_current = f"{latest_bucket.servo_current:.1f}A"
+                else:
+                    temperature = "0°C"
+                    vibration = "0mm/s"
+                    servo_current = "0A"
+
+                data = {
+                    "name": device.name,
+                    "model": device.model,
+                    "status": device.status,
+                    "runtime": f"{realtime.runtime:.1f}h" if realtime else "0h",
+                    "temperature": temperature,
+                    "vibration": vibration,
+                    "pressure": f"{realtime.pressure:.1f}MPa" if realtime else "0MPa",
+                    "spindleSpeed": f"{realtime.spindle_speed}RPM" if realtime else "0RPM",
+                    "servoCurrent": servo_current,
+                }
+                fp = _fingerprint(data)
+                if fp != seen:
+                    yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+                    seen = fp
+            finally:
+                db.close()
+            await asyncio.sleep(2)
+
+    return _sse_response(event_generator())
+
+
+@router.get("/subsystems/stream")
+async def subsystems_stream():
+    """SSE: 子系统状态实时推送"""
+
+    async def event_generator():
+        seen = None
+        while True:
+            db = SessionLocal()
+            try:
+                latest_bucket = (
+                    db.query(
+                        func.avg(TrendData.servo_current).label("servo_current"),
+                        func.avg(TrendData.vibration).label("vibration"),
+                        func.avg(TrendData.temperature).label("temperature"),
+                    )
+                    .filter(TrendData.record_time >= datetime.now() - timedelta(hours=24))
+                    .group_by(
+                        func.date_format(TrendData.record_time, "%Y%m%d%H"),
+                        func.floor(func.minute(TrendData.record_time) / 5),
+                    )
+                    .order_by(func.min(TrendData.record_time).desc())
+                    .first()
+                )
+                realtime = _pick_realtime(db)
+
+                spindle_metrics = [
+                    {"label": "振动监测", "value": f"{latest_bucket.vibration:.1f}" if latest_bucket and latest_bucket.vibration is not None else "0", "unit": "mm/s"},
+                    {"label": "温度监测", "value": f"{latest_bucket.temperature:.0f}" if latest_bucket and latest_bucket.temperature is not None else "0", "unit": "°C"},
+                    {"label": "电流监测", "value": f"{latest_bucket.servo_current:.1f}" if latest_bucket and latest_bucket.servo_current is not None else "0", "unit": "A"},
+                    {"label": "转速监测", "value": str(realtime.spindle_speed) if realtime else "0", "unit": "RPM"},
+                ]
+
+                hydraulic_pressure = f"{realtime.pressure:.1f}" if realtime else "0"
+
+                subs = db.query(Subsystem).all()
+                result = []
+                for sub in subs:
+                    if sub.name_en == "SPINDLE":
+                        metrics = spindle_metrics
+                    else:
+                        rows = (
+                            db.query(SubsystemRealtime)
+                            .filter(SubsystemRealtime.subsystem_id == sub.id)
+                            .all()
+                        )
+                        grouped: dict[str, list] = {}
+                        for r in rows:
+                            grouped.setdefault(r.label, []).append(r)
+                        picked = {label: random.choice(items) for label, items in grouped.items()}
+
+                        metrics = []
+                        for label, m in picked.items():
+                            if sub.name_en == "HYDRAULIC" and label == "系统压力":
+                                value = hydraulic_pressure
+                            else:
+                                value = str(m.value)
+                            metrics.append({"label": label, "value": value, "unit": m.unit})
+
+                        metrics.sort(key=lambda x: x["label"])
+
+                    result.append({
+                        "name": sub.name,
+                        "nameEn": sub.name_en,
+                        "status": sub.status,
+                        "healthScore": sub.health_score,
+                        "metrics": metrics,
+                    })
+
+                data = result
+                fp = _fingerprint({"data": data})
+                if fp != seen:
+                    yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+                    seen = fp
+            finally:
+                db.close()
+            await asyncio.sleep(2)
+
+    return _sse_response(event_generator())
+
+
+@router.get("/trend-data/stream")
+async def trend_data_stream(
+    range: str = Query("24h", pattern="^(24h|7d)$"),
+):
+    """SSE: 趋势数据实时推送"""
+
+    _WEEKDAY_CN = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+
+    async def event_generator():
+        seen = None
+        while True:
+            db = SessionLocal()
+            try:
+                now = datetime.now()
+
+                if range == "7d":
+                    since = now - timedelta(days=7)
+                    rows = (
+                        db.query(
+                            func.min(TrendData.record_time).label("ts"),
+                            func.avg(TrendData.servo_current).label("servo_current"),
+                            func.avg(TrendData.vibration).label("vibration"),
+                            func.avg(TrendData.temperature).label("temperature"),
+                        )
+                        .filter(TrendData.record_time >= since)
+                        .group_by(func.date_format(TrendData.record_time, "%Y%m%d%H"))
+                        .order_by("ts")
+                        .all()
+                    )
+                    labels = [_WEEKDAY_CN[r.ts.weekday()] if r.ts else "" for r in rows]
+                else:
+                    since = now - timedelta(hours=24)
+                    rows = (
+                        db.query(
+                            func.min(TrendData.record_time).label("ts"),
+                            func.avg(TrendData.servo_current).label("servo_current"),
+                            func.avg(TrendData.vibration).label("vibration"),
+                            func.avg(TrendData.temperature).label("temperature"),
+                        )
+                        .filter(TrendData.record_time >= since)
+                        .group_by(
+                            func.date_format(TrendData.record_time, "%Y%m%d%H"),
+                            func.floor(func.minute(TrendData.record_time) / 5),
+                        )
+                        .order_by("ts")
+                        .all()
+                    )
+                    labels = [r.ts.strftime("%H:%M") for r in rows]
+
+                servo_current = [round(float(r.servo_current), 2) for r in rows]
+                vibration = [round(float(r.vibration), 2) for r in rows]
+                temperature = [round(float(r.temperature), 2) for r in rows]
+
+                data = {
+                    "labels": labels,
+                    "servoCurrent": servo_current,
+                    "vibration": vibration,
+                    "temperature": temperature,
+                }
+                fp = _fingerprint(data)
+                if fp != seen:
+                    yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+                    seen = fp
+            finally:
+                db.close()
+            await asyncio.sleep(2)
+
+    return _sse_response(event_generator())

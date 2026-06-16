@@ -15,7 +15,7 @@ const navItems = [
   { name: 'overview', cn: '总览', en: 'Overview', path: '/' },
   { name: 'analysis', cn: '智能分析', en: 'Analysis', path: '/analysis' },
   { name: 'diagnosis', cn: '状态检测', en: 'Diagnosis', path: '/diagnosis' },
-  { name: 'equipment', cn: '设备管理', en: 'Equipment', path: '/equipment' },
+  { name: 'test', cn: '测试', en: 'Test', path: '/test' },
 ]
 
 function pad(n: number): string {
@@ -187,8 +187,8 @@ onUnmounted(() => {
             <svg v-else-if="item.name === 'diagnosis'" viewBox="0 0 24 24" fill="currentColor">
               <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l4.59-4.58L18 11l-6 6z"/>
             </svg>
-            <svg v-else-if="item.name === 'equipment'" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M22 9V7h-2V5c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-2h2v-2h-2v-2h2v-2h-2V9h2zm-4 10H4V5h14v14zM6 13h5v4H6zm6-6h4v3h-4zM6 7h5v5H6zm6 4h4v6h-4z"/>
+            <svg v-else-if="item.name === 'test'" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/>
             </svg>
           </span>
           <span class="nav-label-cn">{{ item.cn }}</span>

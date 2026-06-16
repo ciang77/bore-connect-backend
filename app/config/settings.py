@@ -33,6 +33,13 @@ class Settings:
     DB_NAME: str = os.getenv("DB_NAME", "bore_connect")
     DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "20"))
 
+    # Machine 数据库
+    MACHINE_DB_HOST: str = os.getenv("MACHINE_DB_HOST", "127.0.0.1")
+    MACHINE_DB_PORT: int = int(os.getenv("MACHINE_DB_PORT", "3306"))
+    MACHINE_DB_USER: str = os.getenv("MACHINE_DB_USER", "root")
+    MACHINE_DB_PASSWORD: str = os.getenv("MACHINE_DB_PASSWORD", "123456")
+    MACHINE_DB_NAME: str = os.getenv("MACHINE_DB_NAME", "machine")
+
     # SMTP
     SMTP_SERVER: str = os.getenv("SMTP_SERVER", "smtp.qq.com")
     SMTP_PORT: int = int(os.getenv("SMTP_PORT", "465"))
@@ -48,6 +55,14 @@ class Settings:
         return (
             f"mysql+pymysql://{self.DB_USER}:{self.DB_PASSWORD}"
             f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+            f"?charset=utf8mb4"
+        )
+
+    @property
+    def machine_database_url(self) -> str:
+        return (
+            f"mysql+pymysql://{self.MACHINE_DB_USER}:{self.MACHINE_DB_PASSWORD}"
+            f"@{self.MACHINE_DB_HOST}:{self.MACHINE_DB_PORT}/{self.MACHINE_DB_NAME}"
             f"?charset=utf8mb4"
         )
 

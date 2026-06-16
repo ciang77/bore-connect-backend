@@ -12,15 +12,18 @@ from app.routers.overview import router as overview_router
 from app.routers.analysis import router as analysis_router
 from app.routers.diagnosis import router as diagnosis_router
 from app.routers.alert import router as alert_router
+from app.routers.test_view import router as test_router
 from app.config.settings import settings
 from app.services.alert import start_alert_monitor
 from app.services.trend_simulator import start_trend_simulator
+from app.services.machine_simulator import start_machine_simulator
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     start_alert_monitor(interval=30)
     start_trend_simulator(interval=30)
+    start_machine_simulator(interval=1)
     yield
 
 
@@ -40,6 +43,7 @@ app.include_router(overview_router)
 app.include_router(analysis_router)
 app.include_router(diagnosis_router)
 app.include_router(alert_router)
+app.include_router(test_router)
 
 
 @app.get("/api/health")

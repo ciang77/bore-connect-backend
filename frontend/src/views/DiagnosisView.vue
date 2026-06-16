@@ -220,28 +220,40 @@ export default {
         { label: '油箱容积', value: '100 L' },
         { label: '工作压力', value: '6.5 MPa' }
       ],
-      hydraulicStatus: [],
-      timer: null
+      hydraulicStatus: []
     }
   },
   mounted() {
     this.loadStatus()
-    this.timer = setInterval(() => this.loadStatus(), 3000)
+    // SSE 实时推送替代轮询
+    this._es = new EventSource('/api/diagnosis/status/stream')
+    this._es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        this.applyData(data)
+      } catch { /* ignore malformed data */ }
+    }
   },
   beforeUnmount() {
-    if (this.timer) clearInterval(this.timer)
+    if (this._es) {
+      this._es.close()
+      this._es = null
+    }
   },
   methods: {
+    applyData(data) {
+      for (const item of data) {
+        if (item.name === '主轴系统') this.spindleStatus = item.variables
+        else if (item.name === '润滑系统') this.lubricationStatus = item.variables
+        else if (item.name === '进给系统') this.feedStatus = item.variables
+        else if (item.name === '液压系统') this.hydraulicStatus = item.variables
+      }
+    },
     async loadStatus() {
       try {
         const res = await fetchDiagnosisStatus()
         if (res.code === 0 && res.data) {
-          for (const item of res.data) {
-            if (item.name === '主轴系统') this.spindleStatus = item.variables
-            else if (item.name === '润滑系统') this.lubricationStatus = item.variables
-            else if (item.name === '进给系统') this.feedStatus = item.variables
-            else if (item.name === '液压系统') this.hydraulicStatus = item.variables
-          }
+          this.applyData(res.data)
         }
       } catch { /* keep last data */ }
     }

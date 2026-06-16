@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { fetchDeviceStatus, type DeviceStatus } from '../api/overview'
+import { useEventSource } from '../composables/useEventSource'
 
 type DeviceState = 'online' | 'warning' | 'stopped'
 
@@ -15,8 +16,6 @@ const deviceStatus = ref<DeviceStatus>({
   spindleSpeed: '',
   servoCurrent: '',
 })
-
-let updateTimer: ReturnType<typeof setInterval> | undefined
 
 const statusText = computed(() => {
   switch (deviceStatus.value.status) {
@@ -40,13 +39,14 @@ async function loadData() {
   }
 }
 
-onMounted(() => {
-  loadData()
-  updateTimer = setInterval(loadData, 3000)
+// SSE 必须在 setup 同步阶段注册，不能放在 onMounted 的 await 之后
+useEventSource<DeviceStatus>('/api/overview/device-status/stream', (data) => {
+  deviceStatus.value = data
 })
 
-onUnmounted(() => {
-  if (updateTimer) clearInterval(updateTimer)
+onMounted(async () => {
+  // 首屏快速加载走 REST
+  await loadData()
 })
 </script>
 
